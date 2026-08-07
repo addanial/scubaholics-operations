@@ -419,6 +419,7 @@ function PhotoPicker({
   lang: Lang;
 }) {
   const [previews, setPreviews] = useState<string[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
   useEffect(() => {
     const urls = files.map((file) => URL.createObjectURL(file));
     setPreviews(urls);
@@ -434,18 +435,13 @@ function PhotoPicker({
   return (
     <div className="photo-picker">
       <div className="photo-actions">
-        <label className="secondary photo-button">
+        <button
+          type="button"
+          className="secondary photo-button"
+          onClick={() => setCameraOpen(true)}
+        >
           {lang === "bm" ? "Ambil Gambar" : "Take Photo"}
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(e) => {
-              add(e.target.files);
-              e.target.value = "";
-            }}
-          />
-        </label>
+        </button>
         <label className="secondary photo-button">
           {lang === "bm"
             ? "Pilih Galeri / Komputer"
@@ -487,6 +483,105 @@ function PhotoPicker({
           ))}
         </div>
       )}
+      {cameraOpen && (
+        <CameraCapture
+          lang={lang}
+          close={() => setCameraOpen(false)}
+          captured={(file) => {
+            setFiles([...files, file].slice(0, 10));
+            setCameraOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CameraCapture({
+  lang,
+  close,
+  captured,
+}: {
+  lang: Lang;
+  close: () => void;
+  captured: (file: File) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let mounted = true;
+    navigator.mediaDevices
+      ?.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      })
+      .then((stream) => {
+        if (!mounted)
+          return stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      })
+      .catch(() =>
+        setError(
+          lang === "bm"
+            ? "Kamera tidak dapat dibuka. Benarkan akses kamera dalam tetapan browser."
+            : "Camera could not open. Allow camera access in browser settings.",
+        ),
+      );
+    return () => {
+      mounted = false;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [lang]);
+  const take = () => {
+    const video = videoRef.current;
+    if (!video?.videoWidth) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        captured(
+          new File([blob], `camera-${Date.now()}.jpg`, { type: "image/jpeg" }),
+        );
+      },
+      "image/jpeg",
+      0.88,
+    );
+  };
+  return (
+    <div className="camera-backdrop">
+      <div className="camera-panel">
+        <div className="camera-head">
+          <strong>
+            {lang === "bm" ? "Kamera Gambar Kerja" : "Work Photo Camera"}
+          </strong>
+          <button type="button" onClick={close}>
+            ×
+          </button>
+        </div>
+        {error ? (
+          <div className="form-msg">{error}</div>
+        ) : (
+          <video ref={videoRef} autoPlay playsInline muted />
+        )}
+        <div className="camera-actions">
+          <button type="button" className="secondary" onClick={close}>
+            {lang === "bm" ? "Batal" : "Cancel"}
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={!!error}
+            onClick={take}
+          >
+            {lang === "bm" ? "Ambil Gambar" : "Capture"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1979,12 +2074,10 @@ function jobEquipmentName(job: Job, lang: Lang) {
 
 async function jobMediaDataUrl(path: string) {
   try {
-    const { data, error } = await supabase.storage
+    const { data: blob, error } = await supabase.storage
       .from("job-media")
-      .createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return null;
-    const response = await fetch(data.signedUrl);
-    const blob = await response.blob();
+      .download(path);
+    if (error || !blob) return null;
     const bitmap = await createImageBitmap(blob);
     const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement("canvas");
@@ -2281,28 +2374,35 @@ function JobDetailsModal({ t, lang, job, profile, close, remove }: any) {
   const [signatureUrl, setSignatureUrl] = useState("");
   useEffect(() => {
     let active = true;
+    const objectUrls: string[] = [];
     async function loadMedia() {
       if (job.photo_paths?.length) {
-        const { data } = await supabase.storage
-          .from("job-media")
-          .createSignedUrls(job.photo_paths, 3600);
-        if (active)
-          setPhotoUrls(
-            (data || [])
-              .map((item) => item.signedUrl)
-              .filter((url): url is string => Boolean(url)),
-          );
+        const results = await Promise.all(
+          job.photo_paths.map((path: string) =>
+            supabase.storage.from("job-media").download(path),
+          ),
+        );
+        const urls = results
+          .filter((result) => !result.error && result.data)
+          .map((result) => URL.createObjectURL(result.data!));
+        objectUrls.push(...urls);
+        if (active) setPhotoUrls(urls);
       }
       if (job.signature_path) {
         const { data } = await supabase.storage
           .from("job-media")
-          .createSignedUrl(job.signature_path, 3600);
-        if (active && data?.signedUrl) setSignatureUrl(data.signedUrl);
+          .download(job.signature_path);
+        if (data) {
+          const url = URL.createObjectURL(data);
+          objectUrls.push(url);
+          if (active) setSignatureUrl(url);
+        }
       }
     }
     loadMedia();
     return () => {
       active = false;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [job]);
   return (
