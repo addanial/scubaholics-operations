@@ -97,6 +97,8 @@ type Job = {
   fault: string | null;
   remarks: string | null;
   verification_method: string;
+  photo_paths: string[];
+  signature_path: string | null;
   created_at: string;
   equipment?: { name_bm: string; name_en: string } | null;
   inventory_items?: {
@@ -493,6 +495,7 @@ export default function App() {
   const [lang, setLang] = useState<Lang>("bm");
   const t = copy[lang];
   const [session, setSession] = useState<any>(null);
+  const activeUserId = useRef<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [menu, setMenu] = useState(false);
@@ -585,13 +588,18 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
+      activeUserId.current = data.session?.user.id || null;
       if (data.session) load(data.session.user.id);
       else setLoading(false);
     });
     const { data } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      if (event === "SIGNED_IN" && s) load(s.user.id);
+      if (event === "SIGNED_IN" && s && activeUserId.current !== s.user.id) {
+        activeUserId.current = s.user.id;
+        load(s.user.id);
+      }
       if (event === "SIGNED_OUT" || !s) {
+        activeUserId.current = null;
         setProfile(null);
         setLoading(false);
       }
@@ -1969,6 +1977,29 @@ function jobEquipmentName(job: Job, lang: Lang) {
   return job.equipment_category || job.job_type || "-";
 }
 
+async function jobMediaDataUrl(path: string) {
+  try {
+    const { data, error } = await supabase.storage
+      .from("job-media")
+      .createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) return null;
+    const response = await fetch(data.signedUrl);
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    const scale = Math.min(1, 1200 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas
+      .getContext("2d")!
+      .drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return canvas.toDataURL("image/jpeg", 0.8);
+  } catch {
+    return null;
+  }
+}
+
 async function printWorkRecords(records: Job[], lang: Lang) {
   if (!records.length) return;
 
@@ -2022,7 +2053,7 @@ async function printWorkRecords(records: Job[], lang: Lang) {
   };
 
   addHeader();
-  records.forEach((job, index) => {
+  for (const [index, job] of records.entries()) {
     ensureSpace(55);
     doc.setFillColor(237, 245, 248);
     doc.roundedRect(margin, y - 4, contentWidth, 8, 1.5, 1.5, "F");
@@ -2066,8 +2097,39 @@ async function printWorkRecords(records: Job[], lang: Lang) {
     field(lang === "bm" ? "Kerosakan" : "Fault", job.fault);
     field(lang === "bm" ? "Kerja dilakukan" : "Work done", job.work_done);
     field(lang === "bm" ? "Catatan" : "Remarks", job.remarks);
+    if (job.photo_paths?.length) {
+      field(
+        lang === "bm" ? "Gambar kerja" : "Work photos",
+        `${job.photo_paths.length}`,
+      );
+      for (const path of job.photo_paths) {
+        const image = await jobMediaDataUrl(path);
+        if (!image) continue;
+        ensureSpace(54);
+        doc.addImage(image, "JPEG", margin + 2, y, 72, 48, undefined, "FAST");
+        y += 52;
+      }
+    }
+    if (job.signature_path) {
+      const signature = await jobMediaDataUrl(job.signature_path);
+      if (signature) {
+        field(lang === "bm" ? "Tandatangan" : "Signature", "");
+        ensureSpace(32);
+        doc.addImage(
+          signature,
+          "JPEG",
+          margin + 2,
+          y,
+          65,
+          25,
+          undefined,
+          "FAST",
+        );
+        y += 29;
+      }
+    }
     y += 5;
-  });
+  }
 
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page += 1) {
@@ -2215,6 +2277,34 @@ function displayWorkTime(value: string | null, lang: Lang) {
 }
 
 function JobDetailsModal({ t, lang, job, profile, close, remove }: any) {
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
+  const [signatureUrl, setSignatureUrl] = useState("");
+  useEffect(() => {
+    let active = true;
+    async function loadMedia() {
+      if (job.photo_paths?.length) {
+        const { data } = await supabase.storage
+          .from("job-media")
+          .createSignedUrls(job.photo_paths, 3600);
+        if (active)
+          setPhotoUrls(
+            (data || [])
+              .map((item) => item.signedUrl)
+              .filter((url): url is string => Boolean(url)),
+          );
+      }
+      if (job.signature_path) {
+        const { data } = await supabase.storage
+          .from("job-media")
+          .createSignedUrl(job.signature_path, 3600);
+        if (active && data?.signedUrl) setSignatureUrl(data.signedUrl);
+      }
+    }
+    loadMedia();
+    return () => {
+      active = false;
+    };
+  }, [job]);
   return (
     <div className="modal-backdrop">
       <div className="modal user-modal">
@@ -2262,6 +2352,37 @@ function JobDetailsModal({ t, lang, job, profile, close, remove }: any) {
           <p>
             <strong>{t.verification}:</strong> {job.verification_method || "-"}
           </p>
+        </div>
+        <div className="job-media-section">
+          <h3>{lang === "bm" ? "Gambar Kerja" : "Work Photos"}</h3>
+          {photoUrls.length ? (
+            <div className="job-media-gallery">
+              {photoUrls.map((url, index) => (
+                <a href={url} target="_blank" rel="noreferrer" key={url}>
+                  <img
+                    src={url}
+                    alt={`${lang === "bm" ? "Gambar kerja" : "Work photo"} ${index + 1}`}
+                  />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <small className="block-muted">
+              {job.photo_paths?.length
+                ? lang === "bm"
+                  ? "Gambar sedang dimuatkan..."
+                  : "Loading photos..."
+                : lang === "bm"
+                  ? "Tiada gambar kerja."
+                  : "No work photos."}
+            </small>
+          )}
+          {signatureUrl && (
+            <div className="job-signature-preview">
+              <strong>{t.signature}</strong>
+              <img src={signatureUrl} alt={t.signature} />
+            </div>
+          )}
         </div>
         <div className="modal-actions job-detail-actions">
           {profile.role === "admin" && (
