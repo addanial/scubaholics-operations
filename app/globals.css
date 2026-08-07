@@ -569,6 +569,38 @@ code {
 .job-detail-list p {
   white-space: pre-wrap;
 }
+.job-media-section {
+  margin: 16px 0 20px;
+}
+.job-media-section h3 {
+  margin: 0 0 10px;
+}
+.job-media-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(125px, 1fr));
+  gap: 9px;
+}
+.job-media-gallery img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+}
+.job-signature-preview {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+}
+.job-signature-preview img {
+  width: min(280px, 100%);
+  max-height: 120px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+}
 .job-actions,
 .pdf-record-btn {
   display: flex;
