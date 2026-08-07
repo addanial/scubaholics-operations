@@ -902,6 +902,46 @@ code {
   margin-top: 5px;
   color: var(--muted);
 }
+.camera-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  background: #020b12e8;
+}
+.camera-panel {
+  width: min(680px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: white;
+}
+.camera-head,
+.camera-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.camera-head button {
+  border: 0;
+  background: transparent;
+  font-size: 26px;
+}
+.camera-panel video {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #07121a;
+}
+.camera-actions {
+  justify-content: flex-end;
+}
 .segmented {
   display: grid;
   grid-template-columns: 1fr 1fr;
