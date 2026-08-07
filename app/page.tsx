@@ -140,7 +140,7 @@ const copy = {
     photos: "Gambar Kerja",
     submit: "Hantar Rekod",
     setPin: "Tetapkan PIN",
-    pinHelp: "Gunakan 4 hingga 6 digit. PIN disimpan secara selamat.",
+    pinHelp: "Gunakan 4 hingga 8 digit. PIN disimpan secara selamat.",
     staff: "Kakitangan",
     status: "Status",
     approve: "Luluskan",
@@ -205,7 +205,7 @@ const copy = {
     photos: "Work Photos",
     submit: "Submit Record",
     setPin: "Set PIN",
-    pinHelp: "Use 4 to 6 digits. PIN is stored securely.",
+    pinHelp: "Use 4 to 8 digits. PIN is stored securely.",
     staff: "Staff",
     status: "Status",
     approve: "Approve",
@@ -1707,7 +1707,7 @@ function ProfileView({ t, profile, setNotice }: any) {
             <input
               type="password"
               inputMode="numeric"
-              pattern="[0-9]{4,6}"
+              pattern="[0-9]{4,8}"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               required
