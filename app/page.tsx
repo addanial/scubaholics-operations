@@ -1,106 +1,2111 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Box, ClipboardList, Gauge, Languages, LogOut, Menu, PackagePlus, Plus, Search, Settings, ShieldCheck, Users, Waves, Wrench, X } from "lucide-react";
+import {
+  Activity,
+  Box,
+  ClipboardList,
+  Gauge,
+  Languages,
+  LogOut,
+  Menu,
+  PackagePlus,
+  Plus,
+  Search,
+  Settings,
+  ShieldCheck,
+  Users,
+  Waves,
+  Wrench,
+  X,
+} from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 type Lang = "bm" | "en";
-type Tab = "dashboard" | "jobs" | "equipment" | "inventory" | "users" | "profile";
-type Profile = { id:string; full_name:string; role:string; status:string; language:string };
-type Equipment = { id:string; code:string; name_bm:string; name_en:string; category:string; service_interval_days:number; last_service:string|null; active:boolean };
-type Inventory = { id:string; sku:string; category:string; name_bm:string; name_en:string; variant:string|null; item_condition:string; quantity:number; unit:string; reorder_level:number };
-type Schedule = { id:string; equipment_key:string; name_bm:string; name_en:string; routine_interval_days:number; overall_interval_days:number; last_routine_service:string; last_overall_service:string; active:boolean };
-type Job = { id:string; job_no:string; equipment_id:string|null; equipment_category:string|null; job_type:string; service_date:string; work_done:string; fault:string|null; remarks:string|null; verification_method:string; created_at:string; equipment?:{name_bm:string;name_en:string}|null; profiles?:{full_name:string}|null };
-
-const copy = {
-  bm: { dashboard:"Papan Pemuka",jobs:"Rekod Kerja",equipment:"Peralatan",inventory:"Inventori",users:"Pengguna",profile:"Profil & PIN",logout:"Log Keluar",newJob:"Kerja Baharu",totalEquipment:"Jenis Peralatan Utama",inventoryQty:"Jumlah Unit Keseluruhan",inventoryLines:"Variasi Inventori",dueSoon:"Hampir Tiba",overdue:"Tertunggak",recent:"Aktiviti Terkini",nextService:"Servis Seterusnya",search:"Cari...",all:"Semua",lowStock:"Stok Rendah",category:"Kategori",quantity:"Kuantiti",condition:"Keadaan",adjust:"Laras",login:"Log Masuk",register:"Daftar Akaun",email:"E-mel",password:"Kata Laluan",fullName:"Nama Penuh",firstAccount:"Akaun pertama yang didaftarkan akan menjadi Admin.",pending:"Akaun menunggu kelulusan Admin.",save:"Simpan",cancel:"Batal",workDone:"Kerja Dilakukan",fault:"Kerosakan / Masalah",remarks:"Catatan",jobType:"Jenis Kerja",date:"Tarikh",runningHours:"Jam Operasi",verification:"Pengesahan",signature:"Tandatangan",pin:"PIN",photos:"Gambar Kerja",submit:"Hantar Rekod",setPin:"Tetapkan PIN",pinHelp:"Gunakan 4 hingga 6 digit. PIN disimpan secara selamat.",staff:"Kakitangan",status:"Status",approve:"Luluskan",suspend:"Gantung",active:"Aktif",loading:"Memuatkan...",noData:"Tiada rekod",service:"Servis Berkala",inspection:"Pemeriksaan",repair:"Pembaikan",language:"Bahasa",welcome:"PENGURUSAN OPERASI PERALATAN & INVENTORI",days:"hari",clear:"Padam",registerNote:"Akaun kakitangan baharu perlu diluluskan oleh Admin.",addEquipment:"Tambah Peralatan",editEquipment:"Edit Peralatan",variant:"Saiz / Status",unit:"Unit" },
-  en: { dashboard:"Dashboard",jobs:"Job Records",equipment:"Equipment",inventory:"Inventory",users:"Users",profile:"Profile & PIN",logout:"Log Out",newJob:"New Job",totalEquipment:"Main Equipment Types",inventoryQty:"Total Physical Units",inventoryLines:"Inventory Variants",dueSoon:"Due Soon",overdue:"Overdue",recent:"Recent Activity",nextService:"Next Service",search:"Search...",all:"All",lowStock:"Low Stock",category:"Category",quantity:"Quantity",condition:"Condition",adjust:"Adjust",login:"Log In",register:"Register Account",email:"Email",password:"Password",fullName:"Full Name",firstAccount:"The first registered account becomes Admin.",pending:"Account is awaiting Admin approval.",save:"Save",cancel:"Cancel",workDone:"Work Done",fault:"Fault / Problem",remarks:"Remarks",jobType:"Job Type",date:"Date",runningHours:"Running Hours",verification:"Verification",signature:"Signature",pin:"PIN",photos:"Work Photos",submit:"Submit Record",setPin:"Set PIN",pinHelp:"Use 4 to 6 digits. PIN is stored securely.",staff:"Staff",status:"Status",approve:"Approve",suspend:"Suspend",active:"Active",loading:"Loading...",noData:"No records",service:"Scheduled Service",inspection:"Inspection",repair:"Repair",language:"Language",welcome:"EQUIPMENT & INVENTORY OPERATIONS MANAGEMENT",days:"days",clear:"Clear",registerNote:"New staff accounts require Admin approval.",addEquipment:"Add Equipment",editEquipment:"Edit Equipment",variant:"Size / Status",unit:"Unit" }
+type Tab =
+  | "dashboard"
+  | "jobs"
+  | "equipment"
+  | "inventory"
+  | "users"
+  | "profile";
+type Profile = {
+  id: string;
+  full_name: string;
+  role: string;
+  status: string;
+  language: string;
+};
+type Equipment = {
+  id: string;
+  code: string;
+  name_bm: string;
+  name_en: string;
+  category: string;
+  service_interval_days: number;
+  serial_no: string | null;
+  item_condition: string;
+  last_service: string | null;
+  active: boolean;
+};
+type Inventory = {
+  id: string;
+  sku: string;
+  category: string;
+  name_bm: string;
+  name_en: string;
+  variant: string | null;
+  item_condition: string;
+  quantity: number;
+  unit: string;
+  reorder_level: number;
+  serial_no: string | null;
+  service_interval_days: number;
+};
+type Schedule = {
+  id: string;
+  equipment_key: string;
+  name_bm: string;
+  name_en: string;
+  routine_interval_days: number;
+  overall_interval_days: number;
+  last_routine_service: string;
+  last_overall_service: string;
+  active: boolean;
+};
+type Job = {
+  id: string;
+  job_no: string;
+  equipment_id: string | null;
+  equipment_category: string | null;
+  inventory_item_id: string | null;
+  job_type: string;
+  service_date: string;
+  work_done: string;
+  fault: string | null;
+  remarks: string | null;
+  verification_method: string;
+  created_at: string;
+  equipment?: { name_bm: string; name_en: string } | null;
+  inventory_items?: {
+    name_bm: string;
+    name_en: string;
+    variant: string | null;
+  } | null;
+  profiles?: { full_name: string } | null;
 };
 
-function addDays(date:string|null, days:number) { const d=new Date(date || Date.now()); d.setDate(d.getDate()+days); return d; }
-function dayDiff(d:Date) { return Math.ceil((d.getTime()-new Date().setHours(0,0,0,0))/86400000); }
-function fmtDate(d:string|Date, lang:Lang) { return new Intl.DateTimeFormat(lang==="bm"?"ms-MY":"en-MY",{day:"2-digit",month:"short",year:"numeric"}).format(new Date(d)); }
+const copy = {
+  bm: {
+    dashboard: "Papan Pemuka",
+    jobs: "Rekod Kerja",
+    equipment: "Peralatan",
+    inventory: "Inventori",
+    users: "Pengguna",
+    profile: "Profil & PIN",
+    logout: "Log Keluar",
+    newJob: "Kerja Baharu",
+    totalEquipment: "Jenis Peralatan Utama",
+    inventoryQty: "Jumlah Unit Keseluruhan",
+    inventoryLines: "Variasi Inventori",
+    dueSoon: "Hampir Tiba",
+    overdue: "Tertunggak",
+    recent: "Aktiviti Terkini",
+    nextService: "Servis Seterusnya",
+    search: "Cari...",
+    all: "Semua",
+    lowStock: "Stok Rendah",
+    category: "Kategori",
+    quantity: "Kuantiti",
+    condition: "Keadaan",
+    adjust: "Laras",
+    login: "Log Masuk",
+    register: "Daftar Akaun",
+    email: "E-mel",
+    password: "Kata Laluan",
+    fullName: "Nama Penuh",
+    firstAccount: "Akaun pertama yang didaftarkan akan menjadi Admin.",
+    pending: "Akaun menunggu kelulusan Admin.",
+    save: "Simpan",
+    cancel: "Batal",
+    workDone: "Kerja Dilakukan",
+    fault: "Kerosakan / Masalah",
+    remarks: "Catatan",
+    jobType: "Jenis Kerja",
+    date: "Tarikh",
+    runningHours: "Jam Operasi",
+    verification: "Pengesahan",
+    signature: "Tandatangan",
+    pin: "PIN",
+    photos: "Gambar Kerja",
+    submit: "Hantar Rekod",
+    setPin: "Tetapkan PIN",
+    pinHelp: "Gunakan 4 hingga 6 digit. PIN disimpan secara selamat.",
+    staff: "Kakitangan",
+    status: "Status",
+    approve: "Luluskan",
+    suspend: "Gantung",
+    active: "Aktif",
+    loading: "Memuatkan...",
+    noData: "Tiada rekod",
+    service: "Servis Berkala",
+    inspection: "Pemeriksaan",
+    repair: "Pembaikan",
+    language: "Bahasa",
+    welcome: "PENGURUSAN OPERASI PERALATAN & INVENTORI",
+    days: "hari",
+    clear: "Padam",
+    registerNote: "Akaun kakitangan baharu perlu diluluskan oleh Admin.",
+    addEquipment: "Tambah Peralatan",
+    editEquipment: "Edit Peralatan",
+    variant: "Saiz / Status",
+    unit: "Unit",
+  },
+  en: {
+    dashboard: "Dashboard",
+    jobs: "Job Records",
+    equipment: "Equipment",
+    inventory: "Inventory",
+    users: "Users",
+    profile: "Profile & PIN",
+    logout: "Log Out",
+    newJob: "New Job",
+    totalEquipment: "Main Equipment Types",
+    inventoryQty: "Total Physical Units",
+    inventoryLines: "Inventory Variants",
+    dueSoon: "Due Soon",
+    overdue: "Overdue",
+    recent: "Recent Activity",
+    nextService: "Next Service",
+    search: "Search...",
+    all: "All",
+    lowStock: "Low Stock",
+    category: "Category",
+    quantity: "Quantity",
+    condition: "Condition",
+    adjust: "Adjust",
+    login: "Log In",
+    register: "Register Account",
+    email: "Email",
+    password: "Password",
+    fullName: "Full Name",
+    firstAccount: "The first registered account becomes Admin.",
+    pending: "Account is awaiting Admin approval.",
+    save: "Save",
+    cancel: "Cancel",
+    workDone: "Work Done",
+    fault: "Fault / Problem",
+    remarks: "Remarks",
+    jobType: "Job Type",
+    date: "Date",
+    runningHours: "Running Hours",
+    verification: "Verification",
+    signature: "Signature",
+    pin: "PIN",
+    photos: "Work Photos",
+    submit: "Submit Record",
+    setPin: "Set PIN",
+    pinHelp: "Use 4 to 6 digits. PIN is stored securely.",
+    staff: "Staff",
+    status: "Status",
+    approve: "Approve",
+    suspend: "Suspend",
+    active: "Active",
+    loading: "Loading...",
+    noData: "No records",
+    service: "Scheduled Service",
+    inspection: "Inspection",
+    repair: "Repair",
+    language: "Language",
+    welcome: "EQUIPMENT & INVENTORY OPERATIONS MANAGEMENT",
+    days: "days",
+    clear: "Clear",
+    registerNote: "New staff accounts require Admin approval.",
+    addEquipment: "Add Equipment",
+    editEquipment: "Edit Equipment",
+    variant: "Size / Status",
+    unit: "Unit",
+  },
+};
 
-function SignaturePad({onChange,label,clearLabel}:{onChange:(data:string)=>void;label:string;clearLabel:string}) {
-  const ref=useRef<HTMLCanvasElement>(null); const drawing=useRef(false);
-  const point=(e:React.PointerEvent<HTMLCanvasElement>)=>{ const r=e.currentTarget.getBoundingClientRect(); return {x:(e.clientX-r.left)*(e.currentTarget.width/r.width),y:(e.clientY-r.top)*(e.currentTarget.height/r.height)} };
-  const start=(e:React.PointerEvent<HTMLCanvasElement>)=>{drawing.current=true; const p=point(e); const c=ref.current!.getContext("2d")!; c.beginPath();c.moveTo(p.x,p.y);e.currentTarget.setPointerCapture(e.pointerId)};
-  const move=(e:React.PointerEvent<HTMLCanvasElement>)=>{if(!drawing.current)return;const p=point(e);const c=ref.current!.getContext("2d")!;c.lineWidth=3;c.lineCap="round";c.strokeStyle="#081f3d";c.lineTo(p.x,p.y);c.stroke()};
-  const end=()=>{drawing.current=false;if(ref.current)onChange(ref.current.toDataURL("image/png"))};
-  const clear=()=>{const c=ref.current; if(c){c.getContext("2d")!.clearRect(0,0,c.width,c.height);onChange("")}};
-  return <div><label>{label}</label><canvas ref={ref} width={700} height={210} className="signature" onPointerDown={start} onPointerMove={move} onPointerUp={end} onPointerCancel={end}/><button type="button" className="text-btn" onClick={clear}>{clearLabel}</button></div>;
+function addDays(date: string | null, days: number) {
+  const d = new Date(date || Date.now());
+  d.setDate(d.getDate() + days);
+  return d;
+}
+function dayDiff(d: Date) {
+  return Math.ceil((d.getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000);
+}
+function fmtDate(d: string | Date, lang: Lang) {
+  return new Intl.DateTimeFormat(lang === "bm" ? "ms-MY" : "en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(d));
+}
+
+function SignaturePad({
+  onChange,
+  label,
+  clearLabel,
+}: {
+  onChange: (data: string) => void;
+  label: string;
+  clearLabel: string;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const point = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) * (e.currentTarget.width / r.width),
+      y: (e.clientY - r.top) * (e.currentTarget.height / r.height),
+    };
+  };
+  const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    drawing.current = true;
+    const p = point(e);
+    const c = ref.current!.getContext("2d")!;
+    c.beginPath();
+    c.moveTo(p.x, p.y);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawing.current) return;
+    const p = point(e);
+    const c = ref.current!.getContext("2d")!;
+    c.lineWidth = 3;
+    c.lineCap = "round";
+    c.strokeStyle = "#081f3d";
+    c.lineTo(p.x, p.y);
+    c.stroke();
+  };
+  const end = () => {
+    drawing.current = false;
+    if (ref.current) onChange(ref.current.toDataURL("image/png"));
+  };
+  const clear = () => {
+    const c = ref.current;
+    if (c) {
+      c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
+      onChange("");
+    }
+  };
+  return (
+    <div>
+      <label>{label}</label>
+      <canvas
+        ref={ref}
+        width={700}
+        height={210}
+        className="signature"
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerCancel={end}
+      />
+      <button type="button" className="text-btn" onClick={clear}>
+        {clearLabel}
+      </button>
+    </div>
+  );
 }
 
 export default function App() {
-  const [lang,setLang]=useState<Lang>("bm"); const t=copy[lang];
-  const [session,setSession]=useState<any>(null); const [profile,setProfile]=useState<Profile|null>(null);
-  const [tab,setTab]=useState<Tab>("dashboard"); const [menu,setMenu]=useState(false); const [loading,setLoading]=useState(true);
-  const [equipment,setEquipment]=useState<Equipment[]>([]); const [inventory,setInventory]=useState<Inventory[]>([]); const [jobs,setJobs]=useState<Job[]>([]); const [profiles,setProfiles]=useState<Profile[]>([]);
-  const [schedules,setSchedules]=useState<Schedule[]>([]); const [showJob,setShowJob]=useState(false); const [notice,setNotice]=useState("");
+  const [lang, setLang] = useState<Lang>("bm");
+  const t = copy[lang];
+  const [session, setSession] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [tab, setTab] = useState<Tab>("dashboard");
+  const [menu, setMenu] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [inventory, setInventory] = useState<Inventory[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [showJob, setShowJob] = useState(false);
+  const [notice, setNotice] = useState("");
 
-  const load=useCallback(async(userId:string)=>{
+  const load = useCallback(async (userId: string) => {
     setLoading(true);
-    const p=await supabase.from("profiles").select("*").eq("id",userId).single();
-    if(p.data){setProfile(p.data as Profile);setLang((p.data.language||"bm") as Lang)}
-    if(p.data?.status==="active"){
-      const [e,i,j,m]=await Promise.all([
+    const p = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single();
+    if (p.data) {
+      setProfile(p.data as Profile);
+      setLang((p.data.language || "bm") as Lang);
+    }
+    if (p.data?.status === "active") {
+      const [e, i, j, m] = await Promise.all([
         supabase.from("equipment").select("*").order("code"),
-        supabase.from("inventory_items").select("*").order("category").order("sku"),
-        supabase.from("service_jobs").select("*,equipment(name_bm,name_en),profiles(full_name)").order("service_date",{ascending:false}).limit(100),
-        supabase.from("maintenance_schedules").select("*").eq("active",true)
+        supabase
+          .from("inventory_items")
+          .select("*")
+          .order("category")
+          .order("sku"),
+        supabase
+          .from("service_jobs")
+          .select(
+            "*,equipment(name_bm,name_en),inventory_items(name_bm,name_en,variant),profiles(full_name)",
+          )
+          .order("service_date", { ascending: false })
+          .limit(100),
+        supabase.from("maintenance_schedules").select("*").eq("active", true),
       ]);
-      setEquipment((e.data||[]) as Equipment[]);setInventory((i.data||[]) as Inventory[]);setJobs((j.data||[]) as Job[]);setSchedules((m.data||[]) as Schedule[]);
-      if(p.data.role==="admin"){const u=await supabase.from("profiles").select("*").order("created_at");setProfiles((u.data||[]) as Profile[])}
+      setEquipment((e.data || []) as Equipment[]);
+      setInventory((i.data || []) as Inventory[]);
+      setJobs((j.data || []) as Job[]);
+      setSchedules((m.data || []) as Schedule[]);
+      if (p.data.role === "admin") {
+        const u = await supabase
+          .from("profiles")
+          .select("*")
+          .order("created_at");
+        setProfiles((u.data || []) as Profile[]);
+      }
     }
     setLoading(false);
-  },[]);
+  }, []);
 
-  useEffect(()=>{supabase.auth.getSession().then(({data})=>{setSession(data.session);if(data.session)load(data.session.user.id);else setLoading(false)});const {data}=supabase.auth.onAuthStateChange((_e,s)=>{setSession(s);if(s)load(s.user.id);else{setProfile(null);setLoading(false)}});return()=>data.subscription.unsubscribe()},[load]);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session) load(data.session.user.id);
+      else setLoading(false);
+    });
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+      if (s) load(s.user.id);
+      else {
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+    return () => data.subscription.unsubscribe();
+  }, [load]);
 
-  const due=useMemo(()=>schedules.map(s=>({...s,routineDue:addDays(s.last_routine_service,s.routine_interval_days),overallDue:addDays(s.last_overall_service,s.overall_interval_days),routineDays:dayDiff(addDays(s.last_routine_service,s.routine_interval_days)),overallDays:dayDiff(addDays(s.last_overall_service,s.overall_interval_days))})),[schedules]);
-  const low=inventory.filter(i=>i.quantity<=i.reorder_level); const totalQty=inventory.reduce((a,b)=>a+b.quantity,0);
-  const refresh=()=>session&&load(session.user.id);
-  if(loading)return <div className="splash"><Waves size={42}/><strong>SCUBAHOLICS</strong><span>{t.loading}</span></div>;
-  if(!session)return <Auth lang={lang} setLang={setLang}/>;
-  if(profile?.status!=="active")return <div className="auth-shell"><div className="auth-card center"><Brand/><ShieldCheck size={48}/><h2>{t.pending}</h2><p>{t.registerNote}</p><button onClick={()=>supabase.auth.signOut()}>{t.logout}</button></div></div>;
+  const due = useMemo(
+    () =>
+      schedules.map((s) => ({
+        ...s,
+        routineDue: addDays(s.last_routine_service, s.routine_interval_days),
+        overallDue: addDays(s.last_overall_service, s.overall_interval_days),
+        routineDays: dayDiff(
+          addDays(s.last_routine_service, s.routine_interval_days),
+        ),
+        overallDays: dayDiff(
+          addDays(s.last_overall_service, s.overall_interval_days),
+        ),
+      })),
+    [schedules],
+  );
+  const low = inventory.filter((i) => i.quantity <= i.reorder_level);
+  const totalQty = inventory.reduce((a, b) => a + b.quantity, 0);
+  const refresh = () => session && load(session.user.id);
+  if (loading)
+    return (
+      <div className="splash">
+        <Waves size={42} />
+        <strong>SCUBAHOLICS</strong>
+        <span>{t.loading}</span>
+      </div>
+    );
+  if (!session) return <Auth lang={lang} setLang={setLang} />;
+  if (profile?.status !== "active")
+    return (
+      <div className="auth-shell">
+        <div className="auth-card center">
+          <Brand />
+          <ShieldCheck size={48} />
+          <h2>{t.pending}</h2>
+          <p>{t.registerNote}</p>
+          <button onClick={() => supabase.auth.signOut()}>{t.logout}</button>
+        </div>
+      </div>
+    );
 
-  const nav:[Tab,React.ReactNode,string][]=[["dashboard",<Gauge key="g"/>,t.dashboard],["jobs",<ClipboardList key="j"/>,t.jobs],["equipment",<Wrench key="e"/>,t.equipment],["inventory",<Box key="i"/>,t.inventory],...(profile.role==="admin"?[["users" as Tab,<Users key="u"/>,t.users] as [Tab,React.ReactNode,string]]:[]),["profile",<Settings key="p"/>,t.profile]];
-  return <div className="app-shell">
-    <aside className={menu?"sidebar open":"sidebar"}><div className="mobile-close" onClick={()=>setMenu(false)}><X/></div><Brand/>
-      <nav>{nav.map(([id,icon,label])=><button key={id} className={tab===id?"nav active":"nav"} onClick={()=>{setTab(id);setMenu(false)}}>{icon}<span>{label}</span></button>)}</nav>
-      <div className="sidebar-foot"><div className="avatar">{profile.full_name?.[0]?.toUpperCase()||"S"}</div><div><strong>{profile.full_name}</strong><small>{profile.role}</small></div><button className="icon-btn" title={t.logout} onClick={()=>supabase.auth.signOut()}><LogOut/></button></div>
-    </aside>
-    {menu&&<div className="scrim" onClick={()=>setMenu(false)}/>}<main>
-      <header><button className="menu-btn" onClick={()=>setMenu(true)}><Menu/></button><div><h1>{nav.find(n=>n[0]===tab)?.[2]}</h1><p>SCUBAHOLICS SDN BHD</p></div><div className="header-actions"><button className="lang" onClick={()=>setLang(lang==="bm"?"en":"bm")}><Languages/> {lang==="bm"?"EN":"BM"}</button><button className="primary" onClick={()=>setShowJob(true)}><Plus/>{t.newJob}</button></div></header>
-      {notice&&<div className="notice" onClick={()=>setNotice("")}>{notice}</div>}
-      {tab==="dashboard"&&<Dashboard t={t} lang={lang} equipment={equipment} inventory={inventory} jobs={jobs} due={due} totalQty={totalQty}/>} 
-      {tab==="equipment"&&<EquipmentView t={t} lang={lang} equipment={equipment} inventory={inventory} profile={profile} refresh={refresh} setNotice={setNotice}/>} 
-      {tab==="inventory"&&<InventoryView t={t} lang={lang} items={inventory} low={low} profile={profile} refresh={refresh} setNotice={setNotice}/>} 
-      {tab==="jobs"&&<JobsView t={t} lang={lang} jobs={jobs}/>} 
-      {tab==="users"&&profile.role==="admin"&&<UsersView t={t} users={profiles} refresh={refresh} setNotice={setNotice}/>} 
-      {tab==="profile"&&<ProfileView t={t} profile={profile} setNotice={setNotice}/>} 
-    </main>{showJob&&<JobModalAll t={t} lang={lang} schedules={schedules} user={session.user} close={()=>setShowJob(false)} done={()=>{setShowJob(false);refresh();setNotice(lang==="bm"?"Rekod kerja berjaya disimpan.":"Job record saved.")}}/>}
-  </div>;
+  const nav: [Tab, React.ReactNode, string][] = [
+    ["dashboard", <Gauge key="g" />, t.dashboard],
+    ["jobs", <ClipboardList key="j" />, t.jobs],
+    ["equipment", <Wrench key="e" />, t.equipment],
+    ["inventory", <Box key="i" />, t.inventory],
+    ...(profile.role === "admin"
+      ? [
+          ["users" as Tab, <Users key="u" />, t.users] as [
+            Tab,
+            React.ReactNode,
+            string,
+          ],
+        ]
+      : []),
+    ["profile", <Settings key="p" />, t.profile],
+  ];
+  return (
+    <div className="app-shell">
+      <aside className={menu ? "sidebar open" : "sidebar"}>
+        <div className="mobile-close" onClick={() => setMenu(false)}>
+          <X />
+        </div>
+        <Brand />
+        <nav>
+          {nav.map(([id, icon, label]) => (
+            <button
+              key={id}
+              className={tab === id ? "nav active" : "nav"}
+              onClick={() => {
+                setTab(id);
+                setMenu(false);
+              }}
+            >
+              {icon}
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <div className="avatar">
+            {profile.full_name?.[0]?.toUpperCase() || "S"}
+          </div>
+          <div>
+            <strong>{profile.full_name}</strong>
+            <small>{profile.role}</small>
+          </div>
+          <button
+            className="icon-btn"
+            title={t.logout}
+            onClick={() => supabase.auth.signOut()}
+          >
+            <LogOut />
+          </button>
+        </div>
+      </aside>
+      {menu && <div className="scrim" onClick={() => setMenu(false)} />}
+      <main>
+        <header>
+          <button className="menu-btn" onClick={() => setMenu(true)}>
+            <Menu />
+          </button>
+          <div>
+            <h1>{nav.find((n) => n[0] === tab)?.[2]}</h1>
+            <p>SCUBAHOLICS SDN BHD</p>
+          </div>
+          <div className="header-actions">
+            <button
+              className="lang"
+              onClick={() => setLang(lang === "bm" ? "en" : "bm")}
+            >
+              <Languages /> {lang === "bm" ? "EN" : "BM"}
+            </button>
+            <button className="primary" onClick={() => setShowJob(true)}>
+              <Plus />
+              {t.newJob}
+            </button>
+          </div>
+        </header>
+        {notice && (
+          <div className="notice" onClick={() => setNotice("")}>
+            {notice}
+          </div>
+        )}
+        {tab === "dashboard" && (
+          <Dashboard
+            t={t}
+            lang={lang}
+            equipment={equipment}
+            inventory={inventory}
+            jobs={jobs}
+            due={due}
+            totalQty={totalQty}
+          />
+        )}
+        {tab === "equipment" && (
+          <EquipmentView
+            t={t}
+            lang={lang}
+            equipment={equipment}
+            inventory={inventory}
+            profile={profile}
+            refresh={refresh}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "inventory" && (
+          <InventoryView
+            t={t}
+            lang={lang}
+            items={inventory}
+            low={low}
+            profile={profile}
+            refresh={refresh}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "jobs" && <JobsView t={t} lang={lang} jobs={jobs} />}
+        {tab === "users" && profile.role === "admin" && (
+          <UsersView
+            t={t}
+            users={profiles}
+            refresh={refresh}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "profile" && (
+          <ProfileView t={t} profile={profile} setNotice={setNotice} />
+        )}
+      </main>
+      {showJob && (
+        <JobModalAll
+          t={t}
+          lang={lang}
+          schedules={schedules}
+          equipment={equipment}
+          inventory={inventory}
+          user={session.user}
+          close={() => setShowJob(false)}
+          done={() => {
+            setShowJob(false);
+            refresh();
+            setNotice(
+              lang === "bm"
+                ? "Rekod kerja berjaya disimpan."
+                : "Job record saved.",
+            );
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
-function Brand(){return <div className="brand"><div className="brand-mark"><Waves/></div><div><strong>SCUBAHOLICS</strong><small>Operations</small></div></div>}
+function Brand() {
+  return (
+    <div className="brand">
+      <div className="brand-mark">
+        <Waves />
+      </div>
+      <div>
+        <strong>SCUBAHOLICS</strong>
+        <small>Operations</small>
+      </div>
+    </div>
+  );
+}
 
-function Auth({lang,setLang}:{lang:Lang;setLang:(l:Lang)=>void}){const t=copy[lang];const[mode,setMode]=useState<"login"|"register">("login");const[email,setEmail]=useState("");const[password,setPassword]=useState("");const[name,setName]=useState("");const[msg,setMsg]=useState("");const[busy,setBusy]=useState(false);async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setMsg("");const r=mode==="login"?await supabase.auth.signInWithPassword({email,password}):await supabase.auth.signUp({email,password,options:{data:{full_name:name}}});if(r.error)setMsg(r.error.message);else if(mode==="register"&&!r.data.session)setMsg(lang==="bm"?"Semak e-mel untuk pengesahan, kemudian log masuk.":"Check your email to confirm, then log in.");setBusy(false)}return <div className="auth-shell"><div className="auth-card"><div className="auth-top"><Brand/><button className="lang" onClick={()=>setLang(lang==="bm"?"en":"bm")}><Languages/> {lang==="bm"?"EN":"BM"}</button></div><div className="auth-hero"><span>SCUBAHOLICS SDN BHD</span><h1>{t.welcome}</h1></div><div className="segmented"><button className={mode==="login"?"active":""} onClick={()=>setMode("login")}>{t.login}</button><button className={mode==="register"?"active":""} onClick={()=>setMode("register")}>{t.register}</button></div><form onSubmit={submit}>{mode==="register"&&<label>{t.fullName}<input required value={name} onChange={e=>setName(e.target.value)}/></label>}<label>{t.email}<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>{t.password}<input type="password" minLength={6} required value={password} onChange={e=>setPassword(e.target.value)}/></label>{msg&&<div className="form-msg">{msg}</div>}<button className="primary full" disabled={busy}>{busy?t.loading:mode==="login"?t.login:t.register}</button></form><p className="hint">{mode==="register"?t.firstAccount:t.registerNote}</p></div></div>}
+function Auth({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
+  const t = copy[lang];
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg("");
+    const r =
+      mode === "login"
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({
+            email,
+            password,
+            options: { data: { full_name: name } },
+          });
+    if (r.error) setMsg(r.error.message);
+    else if (mode === "register" && !r.data.session)
+      setMsg(
+        lang === "bm"
+          ? "Semak e-mel untuk pengesahan, kemudian log masuk."
+          : "Check your email to confirm, then log in.",
+      );
+    setBusy(false);
+  }
+  return (
+    <div className="auth-shell">
+      <div className="auth-card">
+        <div className="auth-top">
+          <Brand />
+          <button
+            className="lang"
+            onClick={() => setLang(lang === "bm" ? "en" : "bm")}
+          >
+            <Languages /> {lang === "bm" ? "EN" : "BM"}
+          </button>
+        </div>
+        <div className="auth-hero">
+          <span>SCUBAHOLICS SDN BHD</span>
+          <h1>{t.welcome}</h1>
+        </div>
+        <div className="segmented">
+          <button
+            className={mode === "login" ? "active" : ""}
+            onClick={() => setMode("login")}
+          >
+            {t.login}
+          </button>
+          <button
+            className={mode === "register" ? "active" : ""}
+            onClick={() => setMode("register")}
+          >
+            {t.register}
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          {mode === "register" && (
+            <label>
+              {t.fullName}
+              <input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+          )}
+          <label>
+            {t.email}
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <label>
+            {t.password}
+            <input
+              type="password"
+              minLength={6}
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+          {msg && <div className="form-msg">{msg}</div>}
+          <button className="primary full" disabled={busy}>
+            {busy ? t.loading : mode === "login" ? t.login : t.register}
+          </button>
+        </form>
+        <p className="hint">
+          {mode === "register" ? t.firstAccount : t.registerNote}
+        </p>
+      </div>
+    </div>
+  );
+}
 
-function Dashboard({t,lang,equipment,inventory,jobs,due,totalQty}:any){const overdue=due.filter((e:any)=>Math.min(e.routineDays,e.overallDays)<0).length;const soon=due.filter((e:any)=>{const d=Math.min(e.routineDays,e.overallDays);return d>=0&&d<=7}).length;const equipmentTypes=new Set([...equipment.map((e:any)=>e.category.toLowerCase()),...inventory.map((i:any)=>i.category.toLowerCase())]).size;const totalPhysicalUnits=equipment.length+totalQty;const cards=[[t.totalEquipment,equipmentTypes,<Wrench key="w"/>],[t.inventoryQty,totalPhysicalUnits,<Box key="b"/>],[t.inventoryLines,inventory.length,<PackagePlus key="p"/>],[t.dueSoon,soon,<Activity key="a"/>],[t.overdue,overdue,<ShieldCheck key="s"/>]];return <section><div className="welcome"><div><span>SCUBAHOLICS OPERATIONS</span><h2>{t.welcome}</h2></div><Waves/></div><div className="stats">{cards.map((c:any,i:number)=><div className="stat" key={i}><div><small>{c[0]}</small><strong>{c[1]}</strong></div>{c[2]}</div>)}</div><div className="two-col"><div className="panel"><div className="panel-title"><h3>{t.nextService} · {lang==="bm"?"11 Peralatan":"11 Equipment Types"}</h3></div><div className="list maintenance-list">{due.map((e:any)=>{const days=Math.min(e.routineDays,e.overallDays);return <div className="list-row" key={e.id}><div><strong>{lang==="bm"?e.name_bm:e.name_en}</strong><small>{lang==="bm"?"Rutin 14 hari":"14-day routine"}: {fmtDate(e.routineDue,lang)}</small><small>{lang==="bm"?"Menyeluruh 30 hari":"30-day overall"}: {fmtDate(e.overallDue,lang)}</small></div><span className={days<0?"badge danger":days<=7?"badge warn":"badge ok"}>{days<0?t.overdue:days<=7?t.dueSoon:t.active}</span></div>})}</div></div><div className="panel"><div className="panel-title"><h3>{t.recent}</h3></div><div className="list">{jobs.slice(0,6).map((j:any)=><div className="list-row" key={j.id}><div><strong>{j.job_no} · {j.equipment?(lang==="bm"?j.equipment.name_bm:j.equipment.name_en):(j.equipment_category||j.job_type)}</strong><small>{j.profiles?.full_name||"Staff"} · {fmtDate(j.service_date,lang)}</small></div><span className="badge">{j.verification_method}</span></div>)}{!jobs.length&&<div className="empty">{t.noData}</div>}</div></div></div></section>}
+function Dashboard({
+  t,
+  lang,
+  equipment,
+  inventory,
+  jobs,
+  due,
+  totalQty,
+}: any) {
+  const overdue = due.filter(
+    (e: any) => Math.min(e.routineDays, e.overallDays) < 0,
+  ).length;
+  const soon = due.filter((e: any) => {
+    const d = Math.min(e.routineDays, e.overallDays);
+    return d >= 0 && d <= 7;
+  }).length;
+  const equipmentTypes = new Set([
+    ...equipment.map((e: any) => e.category.toLowerCase()),
+    ...inventory.map((i: any) => i.category.toLowerCase()),
+  ]).size;
+  const totalPhysicalUnits = equipment.length + totalQty;
+  const cards = [
+    [t.totalEquipment, equipmentTypes, <Wrench key="w" />],
+    [t.inventoryQty, totalPhysicalUnits, <Box key="b" />],
+    [t.inventoryLines, inventory.length, <PackagePlus key="p" />],
+    [t.dueSoon, soon, <Activity key="a" />],
+    [t.overdue, overdue, <ShieldCheck key="s" />],
+  ];
+  return (
+    <section>
+      <div className="welcome">
+        <div>
+          <span>SCUBAHOLICS OPERATIONS</span>
+          <h2>{t.welcome}</h2>
+        </div>
+        <Waves />
+      </div>
+      <div className="stats">
+        {cards.map((c: any, i: number) => (
+          <div className="stat" key={i}>
+            <div>
+              <small>{c[0]}</small>
+              <strong>{c[1]}</strong>
+            </div>
+            {c[2]}
+          </div>
+        ))}
+      </div>
+      <div className="two-col">
+        <div className="panel">
+          <div className="panel-title">
+            <h3>
+              {t.nextService} ·{" "}
+              {lang === "bm" ? "11 Peralatan" : "11 Equipment Types"}
+            </h3>
+          </div>
+          <div className="list maintenance-list">
+            {due.map((e: any) => {
+              const days = Math.min(e.routineDays, e.overallDays);
+              return (
+                <div className="list-row" key={e.id}>
+                  <div>
+                    <strong>{lang === "bm" ? e.name_bm : e.name_en}</strong>
+                    <small>
+                      {lang === "bm" ? "Rutin 14 hari" : "14-day routine"}:{" "}
+                      {fmtDate(e.routineDue, lang)}
+                    </small>
+                    <small>
+                      {lang === "bm" ? "Menyeluruh 30 hari" : "30-day overall"}:{" "}
+                      {fmtDate(e.overallDue, lang)}
+                    </small>
+                  </div>
+                  <span
+                    className={
+                      days < 0
+                        ? "badge danger"
+                        : days <= 7
+                          ? "badge warn"
+                          : "badge ok"
+                    }
+                  >
+                    {days < 0 ? t.overdue : days <= 7 ? t.dueSoon : t.active}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panel-title">
+            <h3>{t.recent}</h3>
+          </div>
+          <div className="list">
+            {jobs.slice(0, 6).map((j: any) => (
+              <div className="list-row" key={j.id}>
+                <div>
+                  <strong>
+                    {j.job_no} ·{" "}
+                    {j.equipment
+                      ? lang === "bm"
+                        ? j.equipment.name_bm
+                        : j.equipment.name_en
+                      : j.inventory_items
+                        ? `${lang === "bm" ? j.inventory_items.name_bm : j.inventory_items.name_en}${j.inventory_items.variant ? ` · ${j.inventory_items.variant}` : ""}`
+                        : j.equipment_category || j.job_type}
+                  </strong>
+                  <small>
+                    {j.profiles?.full_name || "Staff"} ·{" "}
+                    {fmtDate(j.service_date, lang)}
+                  </small>
+                </div>
+                <span className="badge">{j.verification_method}</span>
+              </div>
+            ))}
+            {!jobs.length && <div className="empty">{t.noData}</div>}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
-function EquipmentView({t,lang,equipment,inventory,profile,refresh,setNotice}:any){const[editor,setEditor]=useState<any>(null);const order=["compressor","genset","tank","fins","wetsuit","regulator","bcd","belt","weight","mask","snorkel"];const groups:any[]=[];for(const cat of ["compressor","genset"]){const rows=equipment.filter((e:any)=>e.category===cat);groups.push({key:cat,name:cat==="compressor"?"Compressor":"Genset",total:rows.length,unit:"unit",kind:"service",rows});}for(const cat of order.slice(2)){const rows=inventory.filter((i:any)=>i.category.toLowerCase()===cat);if(rows.length)groups.push({key:cat,name:rows[0].category,total:rows.reduce((a:number,b:any)=>a+b.quantity,0),unit:rows[0].unit,kind:"inventory",rows});}groups.sort((a,b)=>order.indexOf(a.key)-order.indexOf(b.key));return <section><div className="toolbar"><div><strong>{lang==="bm"?"11 JENIS PERALATAN UTAMA":"11 MAIN EQUIPMENT TYPES"}</strong><small className="block-muted">{lang==="bm"?"Saiz dan status dipaparkan sebagai variasi.":"Sizes and statuses are shown as variants."}</small></div>{profile.role==="admin"&&<button className="primary" onClick={()=>setEditor({mode:"add"})}><Plus/>{t.addEquipment}</button>}</div><div className="equipment-groups">{groups.map((g:any,index:number)=><article className="equipment-group" key={g.key}><div className="group-top"><div className="group-index">{index+1}</div><div><span className="eyebrow">{g.kind==="service"?(lang==="bm"?"Mesin Servis":"Service Machine"):(lang==="bm"?"Inventori":"Inventory")}</span><h3>{g.name}</h3></div><strong className="group-total">{g.total} <small>{g.unit==="pair"?(lang==="bm"?"pasangan":"pairs"):(lang==="bm"?"unit":"units")}</small></strong></div><div className="variant-list">{g.rows.map((r:any)=><div key={r.id}><span>{g.kind==="service"?(lang==="bm"?r.name_bm:r.name_en):(r.variant||g.name)}</span><strong>{g.kind==="service"?r.code:`${r.quantity} ${r.unit==="pair"?(lang==="bm"?"pasangan":"pairs"):(lang==="bm"?"unit":"units")}`}</strong></div>)}</div>{profile.role==="admin"&&<button className="edit-group" onClick={()=>setEditor({...g,mode:"edit"})}>{t.editEquipment}</button>}</article>)}</div>{editor&&<EquipmentEditor t={t} lang={lang} data={editor} close={()=>setEditor(null)} done={()=>{setEditor(null);refresh();setNotice(lang==="bm"?"Peralatan berjaya dikemas kini.":"Equipment updated successfully.")}}/>}</section>}
+function EquipmentView({
+  t,
+  lang,
+  equipment,
+  inventory,
+  profile,
+  refresh,
+  setNotice,
+}: any) {
+  const [editor, setEditor] = useState<any>(null);
+  const order = [
+    "compressor",
+    "genset",
+    "tank",
+    "fins",
+    "wetsuit",
+    "regulator",
+    "bcd",
+    "belt",
+    "weight",
+    "mask",
+    "snorkel",
+  ];
+  const groups: any[] = [];
+  for (const cat of ["compressor", "genset"]) {
+    const rows = equipment.filter((e: any) => e.category === cat);
+    groups.push({
+      key: cat,
+      name: cat === "compressor" ? "Compressor" : "Genset",
+      total: rows.length,
+      unit: "unit",
+      kind: "service",
+      rows,
+    });
+  }
+  for (const cat of order.slice(2)) {
+    const rows = inventory.filter((i: any) => i.category.toLowerCase() === cat);
+    if (rows.length)
+      groups.push({
+        key: cat,
+        name: rows[0].category,
+        total: rows.reduce((a: number, b: any) => a + b.quantity, 0),
+        unit: rows[0].unit,
+        kind: "inventory",
+        rows,
+      });
+  }
+  groups.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  return (
+    <section>
+      <div className="toolbar">
+        <div>
+          <strong>
+            {lang === "bm"
+              ? "11 JENIS PERALATAN UTAMA"
+              : "11 MAIN EQUIPMENT TYPES"}
+          </strong>
+          <small className="block-muted">
+            {lang === "bm"
+              ? "Saiz dan status dipaparkan sebagai variasi."
+              : "Sizes and statuses are shown as variants."}
+          </small>
+        </div>
+        {profile.role === "admin" && (
+          <button
+            className="primary"
+            onClick={() => setEditor({ mode: "add" })}
+          >
+            <Plus />
+            {t.addEquipment}
+          </button>
+        )}
+      </div>
+      <div className="equipment-groups">
+        {groups.map((g: any, index: number) => (
+          <article className="equipment-group" key={g.key}>
+            <div className="group-top">
+              <div className="group-index">{index + 1}</div>
+              <div>
+                <span className="eyebrow">
+                  {g.kind === "service"
+                    ? lang === "bm"
+                      ? "Mesin Servis"
+                      : "Service Machine"
+                    : lang === "bm"
+                      ? "Inventori"
+                      : "Inventory"}
+                </span>
+                <h3>{g.name}</h3>
+              </div>
+              <strong className="group-total">
+                {g.total}{" "}
+                <small>
+                  {g.unit === "pair"
+                    ? lang === "bm"
+                      ? "pasangan"
+                      : "pairs"
+                    : lang === "bm"
+                      ? "unit"
+                      : "units"}
+                </small>
+              </strong>
+            </div>
+            <div className="variant-list">
+              {g.rows.map((r: any) => (
+                <div key={r.id}>
+                  <span>
+                    {g.kind === "service"
+                      ? lang === "bm"
+                        ? r.name_bm
+                        : r.name_en
+                      : r.variant || g.name}
+                  </span>
+                  <strong>
+                    {g.kind === "service"
+                      ? r.code
+                      : `${r.quantity} ${r.unit === "pair" ? (lang === "bm" ? "pasangan" : "pairs") : lang === "bm" ? "unit" : "units"}`}
+                  </strong>
+                </div>
+              ))}
+            </div>
+            {profile.role === "admin" && (
+              <button
+                className="edit-group"
+                onClick={() => setEditor({ ...g, mode: "edit" })}
+              >
+                {t.editEquipment}
+              </button>
+            )}
+          </article>
+        ))}
+      </div>
+      {editor && (
+        <EquipmentEditor
+          t={t}
+          lang={lang}
+          data={editor}
+          close={() => setEditor(null)}
+          done={() => {
+            setEditor(null);
+            refresh();
+            setNotice(
+              lang === "bm"
+                ? "Peralatan berjaya dikemas kini."
+                : "Equipment updated successfully.",
+            );
+          }}
+        />
+      )}
+    </section>
+  );
+}
 
-function EquipmentEditor({t,lang,data,close,done}:any){const[busy,setBusy]=useState(false);const[rows,setRows]=useState<any[]>(data.rows?data.rows.map((r:any)=>({...r})):[]);const[type,setType]=useState("inventory");const[form,setForm]=useState({category:"",name_bm:"",name_en:"",variant:"",quantity:"1",unit:"unit",sku:"",condition:"in_service",code:"",interval:"30"});const set=(k:string,v:string)=>setForm({...form,[k]:v});const rowSet=(index:number,k:string,v:any)=>setRows(rows.map((r,i)=>i===index?{...r,[k]:v}:r));async function save(e:React.FormEvent){e.preventDefault();setBusy(true);try{if(data.mode==="edit"){for(const r of rows){if(data.kind==="service"){const{error}=await supabase.from("equipment").update({code:r.code,name_bm:r.name_bm,name_en:r.name_en,service_interval_days:Number(r.service_interval_days),updated_at:new Date().toISOString()}).eq("id",r.id);if(error)throw error}else{const{error}=await supabase.from("inventory_items").update({variant:r.variant||null,quantity:Number(r.quantity),unit:r.unit,item_condition:r.item_condition,updated_at:new Date().toISOString()}).eq("id",r.id);if(error)throw error}}}else if(type==="service"){const category=form.category.toLowerCase();const{error}=await supabase.from("equipment").insert({code:form.code,name_bm:form.name_bm,name_en:form.name_en,category,service_interval_days:Number(form.interval),last_service:new Date().toISOString().slice(0,10)});if(error)throw error}else{const{error}=await supabase.from("inventory_items").insert({sku:form.sku.toUpperCase(),category:form.category,name_bm:form.name_bm,name_en:form.name_en,variant:form.variant||null,quantity:Number(form.quantity),unit:form.unit,item_condition:form.condition,reorder_level:0});if(error)throw error}done()}catch(err:any){alert(err.message)}finally{setBusy(false)}}return <div className="modal-backdrop"><div className="modal equipment-editor"><div className="modal-head"><div><span>ADMIN</span><h2>{data.mode==="add"?t.addEquipment:t.editEquipment}</h2></div><button className="icon-btn" onClick={close}><X/></button></div><form onSubmit={save}>{data.mode==="add"?<><div className="segmented"><button type="button" className={type==="inventory"?"active":""} onClick={()=>setType("inventory")}>{lang==="bm"?"Inventori":"Inventory"}</button><button type="button" className={type==="service"?"active":""} onClick={()=>setType("service")}>{lang==="bm"?"Mesin Servis":"Service Machine"}</button></div><div className="form-grid"><label>{t.category}<input required value={form.category} onChange={e=>set("category",e.target.value)} placeholder={type==="service"?"compressor / genset":"e.g. Torch"}/></label><label>SKU / Code<input required value={type==="service"?form.code:form.sku} onChange={e=>set(type==="service"?"code":"sku",e.target.value)}/></label><label>Nama BM<input required value={form.name_bm} onChange={e=>set("name_bm",e.target.value)}/></label><label>English Name<input required value={form.name_en} onChange={e=>set("name_en",e.target.value)}/></label>{type==="inventory"?<><label>{t.variant}<input value={form.variant} onChange={e=>set("variant",e.target.value)}/></label><label>{t.quantity}<input type="number" min="0" required value={form.quantity} onChange={e=>set("quantity",e.target.value)}/></label><label>{t.unit}<select value={form.unit} onChange={e=>set("unit",e.target.value)}><option value="unit">unit</option><option value="pair">pair</option></select></label><label>{t.condition}<select value={form.condition} onChange={e=>set("condition",e.target.value)}><option value="new">new</option><option value="in_service">in service</option><option value="old">old</option><option value="repair">repair</option></select></label></>:<label>{lang==="bm"?"Tempoh Servis (hari)":"Service Interval (days)"}<input type="number" min="1" required value={form.interval} onChange={e=>set("interval",e.target.value)}/></label>}</div></>:<div className="editable-rows">{rows.map((r:any,index:number)=><div className="editable-row" key={r.id}>{data.kind==="service"?<><label>Code<input value={r.code} onChange={e=>rowSet(index,"code",e.target.value)}/></label><label>Nama BM<input value={r.name_bm} onChange={e=>rowSet(index,"name_bm",e.target.value)}/></label><label>English<input value={r.name_en} onChange={e=>rowSet(index,"name_en",e.target.value)}/></label><label>{lang==="bm"?"Servis (hari)":"Service (days)"}<input type="number" min="1" value={r.service_interval_days} onChange={e=>rowSet(index,"service_interval_days",e.target.value)}/></label></>:<><label>{t.variant}<input value={r.variant||""} onChange={e=>rowSet(index,"variant",e.target.value)}/></label><label>{t.quantity}<input type="number" min="0" value={r.quantity} onChange={e=>rowSet(index,"quantity",e.target.value)}/></label><label>{t.unit}<select value={r.unit} onChange={e=>rowSet(index,"unit",e.target.value)}><option value="unit">unit</option><option value="pair">pair</option></select></label><label>{t.condition}<select value={r.item_condition} onChange={e=>rowSet(index,"item_condition",e.target.value)}><option value="new">new</option><option value="in_service">in service</option><option value="old">old</option><option value="repair">repair</option><option value="retired">retired</option></select></label></>}</div>)}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={close}>{t.cancel}</button><button className="primary" disabled={busy}>{busy?t.loading:t.save}</button></div></form></div></div>}
+function EquipmentEditor({ t, lang, data, close, done }: any) {
+  const [busy, setBusy] = useState(false);
+  const [rows, setRows] = useState<any[]>(
+    data.rows ? data.rows.map((r: any) => ({ ...r })) : [],
+  );
+  const [type, setType] = useState("inventory");
+  const [form, setForm] = useState({
+    category: "",
+    name_bm: "",
+    name_en: "",
+    variant: "",
+    quantity: "1",
+    unit: "unit",
+    sku: "",
+    condition: "in_service",
+    code: "",
+    interval: "14",
+    serial_no: "",
+  });
+  const set = (k: string, v: string) => setForm({ ...form, [k]: v });
+  const rowSet = (index: number, k: string, v: any) =>
+    setRows(rows.map((r, i) => (i === index ? { ...r, [k]: v } : r)));
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      if (data.mode === "edit") {
+        for (const r of rows) {
+          if (data.kind === "service") {
+            const { error } = await supabase
+              .from("equipment")
+              .update({
+                code: r.code,
+                serial_no: r.serial_no || null,
+                service_interval_days: Number(r.service_interval_days),
+                item_condition: r.item_condition,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", r.id);
+            if (error) throw error;
+          } else {
+            const { error } = await supabase
+              .from("inventory_items")
+              .update({
+                variant: r.variant || null,
+                quantity: Number(r.quantity),
+                unit: r.unit,
+                serial_no: r.serial_no || null,
+                service_interval_days: Number(r.service_interval_days),
+                item_condition: r.item_condition,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", r.id);
+            if (error) throw error;
+          }
+        }
+      } else if (type === "service") {
+        const category = form.category.toLowerCase();
+        const { error } = await supabase
+          .from("equipment")
+          .insert({
+            code: form.code,
+            name_bm: form.name_bm,
+            name_en: form.name_en,
+            category,
+            service_interval_days: Number(form.interval),
+            serial_no: form.serial_no || null,
+            item_condition: form.condition,
+            last_service: new Date().toISOString().slice(0, 10),
+          });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("inventory_items")
+          .insert({
+            sku: form.sku.toUpperCase(),
+            category: form.category,
+            name_bm: form.name_bm,
+            name_en: form.name_en,
+            variant: form.variant || null,
+            quantity: Number(form.quantity),
+            unit: form.unit,
+            item_condition: form.condition,
+            serial_no: form.serial_no || null,
+            service_interval_days: Number(form.interval),
+            reorder_level: 0,
+          });
+        if (error) throw error;
+      }
+      done();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <div className="modal equipment-editor">
+        <div className="modal-head">
+          <div>
+            <span>ADMIN</span>
+            <h2>{data.mode === "add" ? t.addEquipment : t.editEquipment}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <form onSubmit={save}>
+          {data.mode === "add" ? (
+            <>
+              <div className="segmented">
+                <button
+                  type="button"
+                  className={type === "inventory" ? "active" : ""}
+                  onClick={() => setType("inventory")}
+                >
+                  {lang === "bm" ? "Inventori" : "Inventory"}
+                </button>
+                <button
+                  type="button"
+                  className={type === "service" ? "active" : ""}
+                  onClick={() => setType("service")}
+                >
+                  {lang === "bm" ? "Mesin Servis" : "Service Machine"}
+                </button>
+              </div>
+              <div className="form-grid">
+                <label>
+                  {t.category}
+                  <input
+                    required
+                    value={form.category}
+                    onChange={(e) => set("category", e.target.value)}
+                    placeholder={
+                      type === "service" ? "compressor / genset" : "e.g. Torch"
+                    }
+                  />
+                </label>
+                <label>
+                  SKU / Code
+                  <input
+                    required
+                    value={type === "service" ? form.code : form.sku}
+                    onChange={(e) =>
+                      set(type === "service" ? "code" : "sku", e.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  Nama BM
+                  <input
+                    required
+                    value={form.name_bm}
+                    onChange={(e) => set("name_bm", e.target.value)}
+                  />
+                </label>
+                <label>
+                  English Name
+                  <input
+                    required
+                    value={form.name_en}
+                    onChange={(e) => set("name_en", e.target.value)}
+                  />
+                </label>
+                {type === "inventory" ? (
+                  <>
+                    <label>
+                      {t.variant}
+                      <input
+                        value={form.variant}
+                        onChange={(e) => set("variant", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      {t.quantity}
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={form.quantity}
+                        onChange={(e) => set("quantity", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      {t.unit}
+                      <select
+                        value={form.unit}
+                        onChange={(e) => set("unit", e.target.value)}
+                      >
+                        <option value="unit">unit</option>
+                        <option value="pair">pair</option>
+                      </select>
+                    </label>
+                    <label>
+                      {t.condition}
+                      <select
+                        value={form.condition}
+                        onChange={(e) => set("condition", e.target.value)}
+                      >
+                        <option value="new">new</option>
+                        <option value="in_service">in service</option>
+                        <option value="old">old</option>
+                        <option value="repair">repair</option>
+                      </select>
+                    </label>
+                    <label>
+                      No. Siri
+                      <input
+                        value={form.serial_no}
+                        onChange={(e) => set("serial_no", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      {lang === "bm" ? "Servis (hari)" : "Service (days)"}
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={form.interval}
+                        onChange={(e) => set("interval", e.target.value)}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      No. Siri
+                      <input
+                        value={form.serial_no}
+                        onChange={(e) => set("serial_no", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      {lang === "bm"
+                        ? "Tempoh Servis (hari)"
+                        : "Service Interval (days)"}
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={form.interval}
+                        onChange={(e) => set("interval", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      {t.condition}
+                      <select
+                        value={form.condition}
+                        onChange={(e) => set("condition", e.target.value)}
+                      >
+                        <option value="new">new</option>
+                        <option value="in_service">in service</option>
+                        <option value="old">old</option>
+                        <option value="repair">repair</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="editable-rows">
+              {rows.map((r: any, index: number) => (
+                <div className="editable-row" key={r.id}>
+                  {data.kind === "service" ? (
+                    <>
+                      <label>
+                        Code
+                        <input
+                          value={r.code}
+                          onChange={(e) =>
+                            rowSet(index, "code", e.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        No. Siri
+                        <input
+                          value={r.serial_no || ""}
+                          onChange={(e) =>
+                            rowSet(index, "serial_no", e.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        {t.condition}
+                        <select
+                          value={r.item_condition}
+                          onChange={(e) =>
+                            rowSet(index, "item_condition", e.target.value)
+                          }
+                        >
+                          <option value="new">new</option>
+                          <option value="in_service">in service</option>
+                          <option value="old">old</option>
+                          <option value="repair">repair</option>
+                          <option value="retired">retired</option>
+                        </select>
+                      </label>
+                      <label>
+                        {lang === "bm" ? "Servis (hari)" : "Service (days)"}
+                        <input
+                          type="number"
+                          min="1"
+                          value={r.service_interval_days}
+                          onChange={(e) =>
+                            rowSet(
+                              index,
+                              "service_interval_days",
+                              e.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <label>
+                        {t.variant}
+                        <input
+                          value={r.variant || ""}
+                          onChange={(e) =>
+                            rowSet(index, "variant", e.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        {t.quantity}
+                        <input
+                          type="number"
+                          min="0"
+                          value={r.quantity}
+                          onChange={(e) =>
+                            rowSet(index, "quantity", e.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        No. Siri
+                        <input
+                          value={r.serial_no || ""}
+                          onChange={(e) =>
+                            rowSet(index, "serial_no", e.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        {lang === "bm" ? "Servis (hari)" : "Service (days)"}
+                        <input
+                          type="number"
+                          min="1"
+                          value={r.service_interval_days}
+                          onChange={(e) =>
+                            rowSet(index, "service_interval_days", e.target.value)
+                          }
+                        />
+                      </label>
+                      <label>
+                        {t.condition}
+                        <select
+                          value={r.item_condition}
+                          onChange={(e) =>
+                            rowSet(index, "item_condition", e.target.value)
+                          }
+                        >
+                          <option value="new">new</option>
+                          <option value="in_service">in service</option>
+                          <option value="old">old</option>
+                          <option value="repair">repair</option>
+                          <option value="retired">retired</option>
+                        </select>
+                      </label>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={close}>
+              {t.cancel}
+            </button>
+            <button className="primary" disabled={busy}>
+              {busy ? t.loading : t.save}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
-function InventoryView({t,lang,items,low,profile,refresh,setNotice}:any){const[q,setQ]=useState("");const filtered=items.filter((i:any)=>(i.sku+" "+i.name_bm+" "+i.name_en+" "+(i.variant||"")).toLowerCase().includes(q.toLowerCase()));async function adjust(i:any){const raw=prompt(lang==="bm"?`Kuantiti baharu untuk ${i.name_bm}:`:`New quantity for ${i.name_en}:`,String(i.quantity));if(raw===null)return;const qty=Number(raw);if(!Number.isInteger(qty)||qty<0)return alert("Invalid quantity");const {error}=await supabase.from("inventory_items").update({quantity:qty,updated_at:new Date().toISOString()}).eq("id",i.id);if(error)return alert(error.message);await supabase.from("stock_movements").insert({inventory_item_id:i.id,movement_type:"adjustment",quantity:Math.abs(qty-i.quantity)||1,reason:`Adjusted ${i.quantity} to ${qty}`,created_by:profile.id});setNotice(lang==="bm"?"Kuantiti inventori dikemas kini.":"Inventory quantity updated.");refresh()}return <section><div className="toolbar"><div className="search"><Search/><input placeholder={t.search} value={q} onChange={e=>setQ(e.target.value)}/></div><span className="badge warn">{t.lowStock}: {low.length}</span></div><div className="table-wrap"><table><thead><tr><th>SKU</th><th>{t.category}</th><th>{lang==="bm"?"Item":"Item"}</th><th>Variant</th><th>{t.condition}</th><th>{t.quantity}</th>{profile.role==="admin"&&<th/>}</tr></thead><tbody>{filtered.map((i:any)=><tr key={i.id}><td><code>{i.sku}</code></td><td>{i.category}</td><td><strong>{lang==="bm"?i.name_bm:i.name_en}</strong></td><td>{i.variant||"—"}</td><td><span className="badge">{i.item_condition}</span></td><td className={i.quantity<=i.reorder_level?"qty low":"qty"}>{i.quantity} {i.unit}</td>{profile.role==="admin"&&<td><button className="text-btn" onClick={()=>adjust(i)}>{t.adjust}</button></td>}</tr>)}</tbody></table></div></section>}
+function InventoryView({
+  t,
+  lang,
+  items,
+  low,
+  profile,
+  refresh,
+  setNotice,
+}: any) {
+  const [q, setQ] = useState("");
+  const filtered = items.filter((i: any) =>
+    (i.sku + " " + i.name_bm + " " + i.name_en + " " + (i.variant || ""))
+      .toLowerCase()
+      .includes(q.toLowerCase()),
+  );
+  async function adjust(i: any) {
+    const raw = prompt(
+      lang === "bm"
+        ? `Kuantiti baharu untuk ${i.name_bm}:`
+        : `New quantity for ${i.name_en}:`,
+      String(i.quantity),
+    );
+    if (raw === null) return;
+    const qty = Number(raw);
+    if (!Number.isInteger(qty) || qty < 0) return alert("Invalid quantity");
+    const { error } = await supabase
+      .from("inventory_items")
+      .update({ quantity: qty, updated_at: new Date().toISOString() })
+      .eq("id", i.id);
+    if (error) return alert(error.message);
+    await supabase
+      .from("stock_movements")
+      .insert({
+        inventory_item_id: i.id,
+        movement_type: "adjustment",
+        quantity: Math.abs(qty - i.quantity) || 1,
+        reason: `Adjusted ${i.quantity} to ${qty}`,
+        created_by: profile.id,
+      });
+    setNotice(
+      lang === "bm"
+        ? "Kuantiti inventori dikemas kini."
+        : "Inventory quantity updated.",
+    );
+    refresh();
+  }
+  return (
+    <section>
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            placeholder={t.search}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+        <span className="badge warn">
+          {t.lowStock}: {low.length}
+        </span>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>{t.category}</th>
+              <th>{lang === "bm" ? "Item" : "Item"}</th>
+              <th>Variant</th>
+              <th>{t.condition}</th>
+              <th>{t.quantity}</th>
+              {profile.role === "admin" && <th />}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((i: any) => (
+              <tr key={i.id}>
+                <td>
+                  <code>{i.sku}</code>
+                </td>
+                <td>{i.category}</td>
+                <td>
+                  <strong>{lang === "bm" ? i.name_bm : i.name_en}</strong>
+                </td>
+                <td>{i.variant || "—"}</td>
+                <td>
+                  <span className="badge">{i.item_condition}</span>
+                </td>
+                <td
+                  className={i.quantity <= i.reorder_level ? "qty low" : "qty"}
+                >
+                  {i.quantity} {i.unit}
+                </td>
+                {profile.role === "admin" && (
+                  <td>
+                    <button className="text-btn" onClick={() => adjust(i)}>
+                      {t.adjust}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
-function JobsView({t,lang,jobs}:any){const[q,setQ]=useState("");const rows=jobs.filter((j:any)=>(j.job_no+" "+j.work_done+" "+(j.fault||"")).toLowerCase().includes(q.toLowerCase()));return <section><div className="toolbar"><div className="search"><Search/><input placeholder={t.search} value={q} onChange={e=>setQ(e.target.value)}/></div></div><div className="job-grid">{rows.map((j:any)=><article className="job-card" key={j.id}><div className="job-head"><span>{j.job_no}</span><span className="badge">{j.verification_method}</span></div><h3>{j.equipment?(lang==="bm"?j.equipment.name_bm:j.equipment.name_en):j.job_type}</h3><p>{j.work_done}</p>{j.fault&&<small>{t.fault}: {j.fault}</small>}<footer><span>{j.profiles?.full_name||"Staff"}</span><span>{fmtDate(j.service_date,lang)}</span></footer></article>)}{!rows.length&&<div className="empty panel">{t.noData}</div>}</div></section>}
+function JobsView({ t, lang, jobs }: any) {
+  const [q, setQ] = useState("");
+  const rows = jobs.filter((j: any) =>
+    (j.job_no + " " + j.work_done + " " + (j.fault || ""))
+      .toLowerCase()
+      .includes(q.toLowerCase()),
+  );
+  return (
+    <section>
+      <div className="toolbar">
+        <div className="search">
+          <Search />
+          <input
+            placeholder={t.search}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="job-grid">
+        {rows.map((j: any) => (
+          <article className="job-card" key={j.id}>
+            <div className="job-head">
+              <span>{j.job_no}</span>
+              <span className="badge">{j.verification_method}</span>
+            </div>
+            <h3>
+              {j.equipment
+                ? lang === "bm"
+                  ? j.equipment.name_bm
+                  : j.equipment.name_en
+                : j.inventory_items
+                  ? `${lang === "bm" ? j.inventory_items.name_bm : j.inventory_items.name_en}${j.inventory_items.variant ? ` · ${j.inventory_items.variant}` : ""}`
+                  : j.equipment_category || j.job_type}
+            </h3>
+            <p>{j.work_done}</p>
+            {j.fault && (
+              <small>
+                {t.fault}: {j.fault}
+              </small>
+            )}
+            <footer>
+              <span>{j.profiles?.full_name || "Staff"}</span>
+              <span>{fmtDate(j.service_date, lang)}</span>
+            </footer>
+          </article>
+        ))}
+        {!rows.length && <div className="empty panel">{t.noData}</div>}
+      </div>
+    </section>
+  );
+}
 
-function UsersView({t,users,refresh,setNotice}:any){async function status(u:any,s:string){const{error}=await supabase.from("profiles").update({status:s,updated_at:new Date().toISOString()}).eq("id",u.id);if(error)return alert(error.message);setNotice("User updated.");refresh()}return <section><div className="table-wrap"><table><thead><tr><th>{t.fullName}</th><th>Role</th><th>{t.status}</th><th/></tr></thead><tbody>{users.map((u:any)=><tr key={u.id}><td><strong>{u.full_name}</strong></td><td>{u.role}</td><td><span className={u.status==="active"?"badge ok":u.status==="pending"?"badge warn":"badge danger"}>{u.status}</span></td><td>{u.role!=="admin"&&<button className="text-btn" onClick={()=>status(u,u.status==="active"?"suspended":"active")}>{u.status==="active"?t.suspend:t.approve}</button>}</td></tr>)}</tbody></table></div></section>}
+function UsersView({ t, users, refresh, setNotice }: any) {
+  async function status(u: any, s: string) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ status: s, updated_at: new Date().toISOString() })
+      .eq("id", u.id);
+    if (error) return alert(error.message);
+    setNotice("User updated.");
+    refresh();
+  }
+  return (
+    <section>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{t.fullName}</th>
+              <th>Role</th>
+              <th>{t.status}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u: any) => (
+              <tr key={u.id}>
+                <td>
+                  <strong>{u.full_name}</strong>
+                </td>
+                <td>{u.role}</td>
+                <td>
+                  <span
+                    className={
+                      u.status === "active"
+                        ? "badge ok"
+                        : u.status === "pending"
+                          ? "badge warn"
+                          : "badge danger"
+                    }
+                  >
+                    {u.status}
+                  </span>
+                </td>
+                <td>
+                  {u.role !== "admin" && (
+                    <button
+                      className="text-btn"
+                      onClick={() =>
+                        status(
+                          u,
+                          u.status === "active" ? "suspended" : "active",
+                        )
+                      }
+                    >
+                      {u.status === "active" ? t.suspend : t.approve}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
-function ProfileView({t,profile,setNotice}:any){const[pin,setPin]=useState("");async function save(e:React.FormEvent){e.preventDefault();const{error}=await supabase.rpc("set_my_pin",{p_pin:pin});if(error)return alert(error.message);setPin("");setNotice("PIN saved securely.")}return <section><div className="panel profile-card"><div className="avatar large">{profile.full_name?.[0]}</div><h2>{profile.full_name}</h2><p>{profile.role} · {profile.status}</p><form onSubmit={save}><label>{t.setPin}<input type="password" inputMode="numeric" pattern="[0-9]{4,6}" value={pin} onChange={e=>setPin(e.target.value)} required/></label><small>{t.pinHelp}</small><button className="primary">{t.save}</button></form></div></section>}
+function ProfileView({ t, profile, setNotice }: any) {
+  const [pin, setPin] = useState("");
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const { error } = await supabase.rpc("set_my_pin", { p_pin: pin });
+    if (error) return alert(error.message);
+    setPin("");
+    setNotice("PIN saved securely.");
+  }
+  return (
+    <section>
+      <div className="panel profile-card">
+        <div className="avatar large">{profile.full_name?.[0]}</div>
+        <h2>{profile.full_name}</h2>
+        <p>
+          {profile.role} · {profile.status}
+        </p>
+        <form onSubmit={save}>
+          <label>
+            {t.setPin}
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]{4,6}"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              required
+            />
+          </label>
+          <small>{t.pinHelp}</small>
+          <button className="primary">{t.save}</button>
+        </form>
+      </div>
+    </section>
+  );
+}
 
-function JobModal({t,lang,equipment,user,close,done}:any){const[busy,setBusy]=useState(false);const[method,setMethod]=useState("signature");const[signature,setSignature]=useState("");const[pin,setPin]=useState("");const[files,setFiles]=useState<File[]>([]);const[form,setForm]=useState({equipment_id:equipment[0]?.id||"",job_type:"service",service_date:new Date().toISOString().slice(0,10),running_hours:"",fault:"",work_done:"",remarks:""});const change=(k:string,v:string)=>setForm({...form,[k]:v});async function upload(file:Blob,name:string){const path=`${user.id}/${Date.now()}-${name.replace(/[^a-zA-Z0-9._-]/g,"-")}`;const{error}=await supabase.storage.from("job-media").upload(path,file);if(error)throw error;return path}async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);try{if(method==="pin"){const{data,error}=await supabase.rpc("verify_my_pin",{p_pin:pin});if(error||!data)throw new Error(lang==="bm"?"PIN tidak sah. Tetapkan PIN di halaman Profil.":"Invalid PIN. Set your PIN in Profile.")}if(method==="signature"&&!signature)throw new Error(lang==="bm"?"Sila lukis tandatangan.":"Please draw a signature.");const photos=[];for(const f of files)photos.push(await upload(f,f.name));let sigPath=null;if(signature){const blob=await(await fetch(signature)).blob();sigPath=await upload(blob,"signature.png")}const{error}=await supabase.from("service_jobs").insert({equipment_id:form.equipment_id,job_type:form.job_type,service_date:form.service_date,running_hours:form.running_hours?Number(form.running_hours):null,fault:form.fault||null,work_done:form.work_done,remarks:form.remarks||null,photo_paths:photos,signature_path:sigPath,verification_method:method,created_by:user.id});if(error)throw error;done()}catch(err:any){alert(err.message)}finally{setBusy(false)}}return <div className="modal-backdrop"><div className="modal"><div className="modal-head"><div><span>SCUBAHOLICS</span><h2>{t.newJob}</h2></div><button className="icon-btn" onClick={close}><X/></button></div><form onSubmit={submit}><div className="form-grid"><label>{t.equipment}<select value={form.equipment_id} onChange={e=>change("equipment_id",e.target.value)}>{equipment.map((x:any)=><option key={x.id} value={x.id}>{lang==="bm"?x.name_bm:x.name_en}</option>)}</select></label><label>{t.jobType}<select value={form.job_type} onChange={e=>change("job_type",e.target.value)}><option value="service">{t.service}</option><option value="inspection">{t.inspection}</option><option value="repair">{t.repair}</option></select></label><label>{t.date}<input type="date" value={form.service_date} onChange={e=>change("service_date",e.target.value)}/></label><label>{t.runningHours}<input type="number" step="0.1" value={form.running_hours} onChange={e=>change("running_hours",e.target.value)}/></label></div><label>{t.fault}<textarea value={form.fault} onChange={e=>change("fault",e.target.value)}/></label><label>{t.workDone}<textarea required value={form.work_done} onChange={e=>change("work_done",e.target.value)}/></label><label>{t.remarks}<textarea value={form.remarks} onChange={e=>change("remarks",e.target.value)}/></label><label>{t.photos}<input type="file" accept="image/*" multiple capture="environment" onChange={e=>setFiles(Array.from(e.target.files||[]))}/></label><div className="segmented"><button type="button" className={method==="signature"?"active":""} onClick={()=>setMethod("signature")}>{t.signature}</button><button type="button" className={method==="pin"?"active":""} onClick={()=>setMethod("pin")}>{t.pin}</button></div>{method==="signature"?<SignaturePad onChange={setSignature} label={t.signature} clearLabel={t.clear}/>:<label>{t.pin}<input type="password" inputMode="numeric" value={pin} onChange={e=>setPin(e.target.value)} required/></label>}<div className="modal-actions"><button type="button" className="secondary" onClick={close}>{t.cancel}</button><button className="primary" disabled={busy}>{busy?t.loading:t.submit}</button></div></form></div></div>}
+function JobModal({ t, lang, equipment, user, close, done }: any) {
+  const [busy, setBusy] = useState(false);
+  const [method, setMethod] = useState("signature");
+  const [signature, setSignature] = useState("");
+  const [pin, setPin] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const [form, setForm] = useState({
+    equipment_id: equipment[0]?.id || "",
+    job_type: "service",
+    service_date: new Date().toISOString().slice(0, 10),
+    running_hours: "",
+    fault: "",
+    work_done: "",
+    remarks: "",
+  });
+  const change = (k: string, v: string) => setForm({ ...form, [k]: v });
+  async function upload(file: Blob, name: string) {
+    const path = `${user.id}/${Date.now()}-${name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+    const { error } = await supabase.storage
+      .from("job-media")
+      .upload(path, file);
+    if (error) throw error;
+    return path;
+  }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      if (method === "pin") {
+        const { data, error } = await supabase.rpc("verify_my_pin", {
+          p_pin: pin,
+        });
+        if (error || !data)
+          throw new Error(
+            lang === "bm"
+              ? "PIN tidak sah. Tetapkan PIN di halaman Profil."
+              : "Invalid PIN. Set your PIN in Profile.",
+          );
+      }
+      if (method === "signature" && !signature)
+        throw new Error(
+          lang === "bm"
+            ? "Sila lukis tandatangan."
+            : "Please draw a signature.",
+        );
+      const photos = [];
+      for (const f of files) photos.push(await upload(f, f.name));
+      let sigPath = null;
+      if (signature) {
+        const blob = await (await fetch(signature)).blob();
+        sigPath = await upload(blob, "signature.png");
+      }
+      const { error } = await supabase
+        .from("service_jobs")
+        .insert({
+          equipment_id: form.equipment_id,
+          job_type: form.job_type,
+          service_date: form.service_date,
+          running_hours: form.running_hours ? Number(form.running_hours) : null,
+          fault: form.fault || null,
+          work_done: form.work_done,
+          remarks: form.remarks || null,
+          photo_paths: photos,
+          signature_path: sigPath,
+          verification_method: method,
+          created_by: user.id,
+        });
+      if (error) throw error;
+      done();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <div className="modal-head">
+          <div>
+            <span>SCUBAHOLICS</span>
+            <h2>{t.newJob}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            <label>
+              {t.equipment}
+              <select
+                value={form.equipment_id}
+                onChange={(e) => change("equipment_id", e.target.value)}
+              >
+                {equipment.map((x: any) => (
+                  <option key={x.id} value={x.id}>
+                    {lang === "bm" ? x.name_bm : x.name_en}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t.jobType}
+              <select
+                value={form.job_type}
+                onChange={(e) => change("job_type", e.target.value)}
+              >
+                <option value="service">{t.service}</option>
+                <option value="inspection">{t.inspection}</option>
+                <option value="repair">{t.repair}</option>
+              </select>
+            </label>
+            <label>
+              {t.date}
+              <input
+                type="date"
+                value={form.service_date}
+                onChange={(e) => change("service_date", e.target.value)}
+              />
+            </label>
+            <label>
+              {t.runningHours}
+              <input
+                type="number"
+                step="0.1"
+                value={form.running_hours}
+                onChange={(e) => change("running_hours", e.target.value)}
+              />
+            </label>
+          </div>
+          <label>
+            {t.fault}
+            <textarea
+              value={form.fault}
+              onChange={(e) => change("fault", e.target.value)}
+            />
+          </label>
+          <label>
+            {t.workDone}
+            <textarea
+              required
+              value={form.work_done}
+              onChange={(e) => change("work_done", e.target.value)}
+            />
+          </label>
+          <label>
+            {t.remarks}
+            <textarea
+              value={form.remarks}
+              onChange={(e) => change("remarks", e.target.value)}
+            />
+          </label>
+          <label>
+            {t.photos}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              capture="environment"
+              onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            />
+          </label>
+          <div className="segmented">
+            <button
+              type="button"
+              className={method === "signature" ? "active" : ""}
+              onClick={() => setMethod("signature")}
+            >
+              {t.signature}
+            </button>
+            <button
+              type="button"
+              className={method === "pin" ? "active" : ""}
+              onClick={() => setMethod("pin")}
+            >
+              {t.pin}
+            </button>
+          </div>
+          {method === "signature" ? (
+            <SignaturePad
+              onChange={setSignature}
+              label={t.signature}
+              clearLabel={t.clear}
+            />
+          ) : (
+            <label>
+              {t.pin}
+              <input
+                type="password"
+                inputMode="numeric"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                required
+              />
+            </label>
+          )}
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={close}>
+              {t.cancel}
+            </button>
+            <button className="primary" disabled={busy}>
+              {busy ? t.loading : t.submit}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
-function JobModalAll({t,lang,schedules,user,close,done}:any){const[busy,setBusy]=useState(false);const[method,setMethod]=useState("signature");const[signature,setSignature]=useState("");const[pin,setPin]=useState("");const[files,setFiles]=useState<File[]>([]);const[form,setForm]=useState({equipment_category:schedules[0]?.equipment_key||"compressor",job_type:"routine_service",service_date:new Date().toISOString().slice(0,10),running_hours:"",fault:"",work_done:"",remarks:""});const change=(k:string,v:string)=>setForm({...form,[k]:v});async function upload(file:Blob,name:string){const path=`${user.id}/${Date.now()}-${name.replace(/[^a-zA-Z0-9._-]/g,"-")}`;const{error}=await supabase.storage.from("job-media").upload(path,file);if(error)throw error;return path}async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);try{if(method==="pin"){const{data,error}=await supabase.rpc("verify_my_pin",{p_pin:pin});if(error||!data)throw new Error(lang==="bm"?"PIN tidak sah. Tetapkan PIN di halaman Profil.":"Invalid PIN. Set your PIN in Profile.")}if(method==="signature"&&!signature)throw new Error(lang==="bm"?"Sila lukis tandatangan.":"Please draw a signature.");const photos=[];for(const f of files)photos.push(await upload(f,f.name));let sigPath=null;if(signature){const blob=await(await fetch(signature)).blob();sigPath=await upload(blob,"signature.png")}const{error}=await supabase.from("service_jobs").insert({equipment_category:form.equipment_category,job_type:form.job_type,service_date:form.service_date,running_hours:form.running_hours?Number(form.running_hours):null,fault:form.fault||null,work_done:form.work_done,remarks:form.remarks||null,photo_paths:photos,signature_path:sigPath,verification_method:method,created_by:user.id});if(error)throw error;done()}catch(err:any){alert(err.message)}finally{setBusy(false)}}return <div className="modal-backdrop"><div className="modal"><div className="modal-head"><div><span>SCUBAHOLICS · 11 EQUIPMENT TYPES</span><h2>{t.newJob}</h2></div><button className="icon-btn" onClick={close}><X/></button></div><form onSubmit={submit}><div className="form-grid"><label>{t.equipment}<select value={form.equipment_category} onChange={e=>change("equipment_category",e.target.value)}>{schedules.map((x:any)=><option key={x.id} value={x.equipment_key}>{lang==="bm"?x.name_bm:x.name_en}</option>)}</select></label><label>{t.jobType}<select value={form.job_type} onChange={e=>change("job_type",e.target.value)}><option value="routine_service">{lang==="bm"?"Servis Rutin (14 Hari)":"Routine Service (14 Days)"}</option><option value="overall_service">{lang==="bm"?"Servis Menyeluruh (30 Hari)":"Overall Service (30 Days)"}</option><option value="repair">{t.repair}</option></select></label><label>{t.date}<input type="date" value={form.service_date} onChange={e=>change("service_date",e.target.value)}/></label><label>{t.runningHours}<input type="number" step="0.1" value={form.running_hours} onChange={e=>change("running_hours",e.target.value)}/></label></div><label>{t.fault}<textarea value={form.fault} onChange={e=>change("fault",e.target.value)}/></label><label>{t.workDone}<textarea required value={form.work_done} onChange={e=>change("work_done",e.target.value)}/></label><label>{t.remarks}<textarea value={form.remarks} onChange={e=>change("remarks",e.target.value)}/></label><label>{t.photos}<input type="file" accept="image/*" multiple capture="environment" onChange={e=>setFiles(Array.from(e.target.files||[]))}/></label><div className="segmented"><button type="button" className={method==="signature"?"active":""} onClick={()=>setMethod("signature")}>{t.signature}</button><button type="button" className={method==="pin"?"active":""} onClick={()=>setMethod("pin")}>{t.pin}</button></div>{method==="signature"?<SignaturePad onChange={setSignature} label={t.signature} clearLabel={t.clear}/>:<label>{t.pin}<input type="password" inputMode="numeric" value={pin} onChange={e=>setPin(e.target.value)} required/></label>}<div className="modal-actions"><button type="button" className="secondary" onClick={close}>{t.cancel}</button><button className="primary" disabled={busy}>{busy?t.loading:t.submit}</button></div></form></div></div>}
+function JobModalAll({
+  t,
+  lang,
+  schedules,
+  equipment,
+  inventory,
+  user,
+  close,
+  done,
+}: any) {
+  const [busy, setBusy] = useState(false);
+  const [method, setMethod] = useState("signature");
+  const [signature, setSignature] = useState("");
+  const [pin, setPin] = useState("");
+  const [files, setFiles] = useState<File[]>([]);
+  const firstCategory = schedules[0]?.equipment_key || "compressor";
+  const firstVariation =
+    equipment.find((e: any) => e.category === firstCategory)?.id ||
+    inventory.find((i: any) => i.category.toLowerCase() === firstCategory)?.id ||
+    "";
+  const [form, setForm] = useState({
+    equipment_category: firstCategory,
+    variation_id: firstVariation,
+    job_type: "routine_service",
+    service_date: new Date().toISOString().slice(0, 10),
+    running_hours: "",
+    fault: "",
+    work_done: "",
+    remarks: "",
+  });
+  const change = (k: string, v: string) => setForm({ ...form, [k]: v });
+  const serviceCategory = ["compressor", "genset"].includes(
+    form.equipment_category,
+  );
+  const variations = serviceCategory
+    ? equipment.filter((e: any) => e.category === form.equipment_category)
+    : inventory.filter(
+        (i: any) => i.category.toLowerCase() === form.equipment_category,
+      );
+  const selectCategory = (category: string) => {
+    const options = ["compressor", "genset"].includes(category)
+      ? equipment.filter((e: any) => e.category === category)
+      : inventory.filter((i: any) => i.category.toLowerCase() === category);
+    setForm({
+      ...form,
+      equipment_category: category,
+      variation_id: options[0]?.id || "",
+    });
+  };
+  async function upload(file: Blob, name: string) {
+    const path = `${user.id}/${Date.now()}-${name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+    const { error } = await supabase.storage
+      .from("job-media")
+      .upload(path, file);
+    if (error) throw error;
+    return path;
+  }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      if (method === "pin") {
+        const { data, error } = await supabase.rpc("verify_my_pin", {
+          p_pin: pin,
+        });
+        if (error || !data)
+          throw new Error(
+            lang === "bm"
+              ? "PIN tidak sah. Tetapkan PIN di halaman Profil."
+              : "Invalid PIN. Set your PIN in Profile.",
+          );
+      }
+      if (method === "signature" && !signature)
+        throw new Error(
+          lang === "bm"
+            ? "Sila lukis tandatangan."
+            : "Please draw a signature.",
+        );
+      const photos = [];
+      for (const f of files) photos.push(await upload(f, f.name));
+      let sigPath = null;
+      if (signature) {
+        const blob = await (await fetch(signature)).blob();
+        sigPath = await upload(blob, "signature.png");
+      }
+      const { error } = await supabase
+        .from("service_jobs")
+        .insert({
+          equipment_category: form.equipment_category,
+          equipment_id: serviceCategory ? form.variation_id : null,
+          inventory_item_id: serviceCategory ? null : form.variation_id,
+          job_type: form.job_type,
+          service_date: form.service_date,
+          running_hours: form.running_hours ? Number(form.running_hours) : null,
+          fault: form.fault || null,
+          work_done: form.work_done,
+          remarks: form.remarks || null,
+          photo_paths: photos,
+          signature_path: sigPath,
+          verification_method: method,
+          created_by: user.id,
+        });
+      if (error) throw error;
+      done();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <div className="modal-head">
+          <div>
+            <span>SCUBAHOLICS · 11 EQUIPMENT TYPES</span>
+            <h2>{t.newJob}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            <label>
+              {t.equipment}
+              <select
+                value={form.equipment_category}
+                onChange={(e) => selectCategory(e.target.value)}
+              >
+                {schedules.map((x: any) => (
+                  <option key={x.id} value={x.equipment_key}>
+                    {lang === "bm" ? x.name_bm : x.name_en}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {lang === "bm" ? "Variasi / Unit" : "Variant / Unit"}
+              <select
+                required
+                value={form.variation_id}
+                onChange={(e) => change("variation_id", e.target.value)}
+              >
+                {variations.map((x: any) => (
+                  <option key={x.id} value={x.id}>
+                    {serviceCategory
+                      ? `${lang === "bm" ? x.name_bm : x.name_en} · ${x.serial_no || x.code}`
+                      : `${x.variant || (lang === "bm" ? x.name_bm : x.name_en)} · ${x.quantity} ${x.unit === "pair" ? (lang === "bm" ? "pasangan" : "pairs") : "unit"}${x.serial_no ? ` · ${x.serial_no}` : ""}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t.jobType}
+              <select
+                value={form.job_type}
+                onChange={(e) => change("job_type", e.target.value)}
+              >
+                <option value="routine_service">
+                  {lang === "bm"
+                    ? "Servis Rutin (14 Hari)"
+                    : "Routine Service (14 Days)"}
+                </option>
+                <option value="overall_service">
+                  {lang === "bm"
+                    ? "Servis Menyeluruh (30 Hari)"
+                    : "Overall Service (30 Days)"}
+                </option>
+                <option value="repair">{t.repair}</option>
+              </select>
+            </label>
+            <label>
+              {t.date}
+              <input
+                type="date"
+                value={form.service_date}
+                onChange={(e) => change("service_date", e.target.value)}
+              />
+            </label>
+            <label>
+              {t.runningHours}
+              <input
+                type="number"
+                step="0.1"
+                value={form.running_hours}
+                onChange={(e) => change("running_hours", e.target.value)}
+              />
+            </label>
+          </div>
+          <label>
+            {t.fault}
+            <textarea
+              value={form.fault}
+              onChange={(e) => change("fault", e.target.value)}
+            />
+          </label>
+          <label>
+            {t.workDone}
+            <textarea
+              required
+              value={form.work_done}
+              onChange={(e) => change("work_done", e.target.value)}
+            />
+          </label>
+          <label>
+            {t.remarks}
+            <textarea
+              value={form.remarks}
+              onChange={(e) => change("remarks", e.target.value)}
+            />
+          </label>
+          <label>
+            {t.photos}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              capture="environment"
+              onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            />
+          </label>
+          <div className="segmented">
+            <button
+              type="button"
+              className={method === "signature" ? "active" : ""}
+              onClick={() => setMethod("signature")}
+            >
+              {t.signature}
+            </button>
+            <button
+              type="button"
+              className={method === "pin" ? "active" : ""}
+              onClick={() => setMethod("pin")}
+            >
+              {t.pin}
+            </button>
+          </div>
+          {method === "signature" ? (
+            <SignaturePad
+              onChange={setSignature}
+              label={t.signature}
+              clearLabel={t.clear}
+            />
+          ) : (
+            <label>
+              {t.pin}
+              <input
+                type="password"
+                inputMode="numeric"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                required
+              />
+            </label>
+          )}
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={close}>
+              {t.cancel}
+            </button>
+            <button className="primary" disabled={busy}>
+              {busy ? t.loading : t.submit}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
