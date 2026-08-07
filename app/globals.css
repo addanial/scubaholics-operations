@@ -541,6 +541,19 @@ code {
   color: var(--muted);
   font-size: 12px;
 }
+.job-footer-actions,
+.job-detail-actions .secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.job-footer-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.job-detail-list p {
+  white-space: pre-wrap;
+}
 .job-actions,
 .pdf-record-btn {
   display: flex;
