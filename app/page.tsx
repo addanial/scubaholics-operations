@@ -112,6 +112,10 @@ type RentalItem = {
   quantity: number;
   condition_out: string;
   condition_in: string | null;
+  returned_quantity: number;
+  return_status: string | null;
+  damage_notes: string | null;
+  damage_charge: number;
   inventory_items?: Inventory | null;
 };
 type Rental = {
@@ -127,6 +131,11 @@ type Rental = {
   deposit_amount: number;
   payment_status: string;
   notes: string | null;
+  return_time: string | null;
+  return_notes: string | null;
+  return_photo_paths: string[];
+  return_signature_path: string | null;
+  return_verification_method: string | null;
   created_at: string;
   profiles?: { full_name: string } | null;
   rental_items?: RentalItem[];
@@ -2229,7 +2238,7 @@ async function printRentalRecords(records: Rental[], lang: Lang) {
               ? inv.name_bm
               : inv.name_en
             : "Item";
-          return `${name}${inv?.variant ? ` (${inv.variant})` : ""} x ${item.quantity}`;
+          return `${name}${inv?.variant ? ` (${inv.variant})` : ""} x ${item.quantity}; ${lang === "bm" ? "pulang" : "returned"} ${item.returned_quantity || 0}; ${item.return_status || "-"}; RM ${Number(item.damage_charge || 0).toFixed(2)}`;
         })
         .join(", "),
     );
@@ -2246,6 +2255,20 @@ async function printRentalRecords(records: Rental[], lang: Lang) {
       rental.payment_status.toUpperCase(),
     );
     row(lang === "bm" ? "Catatan" : "Notes", rental.notes || "-");
+    row(
+      lang === "bm" ? "Tarikh pemulangan" : "Actual return",
+      rental.actual_return_date
+        ? fmtDate(rental.actual_return_date, lang)
+        : "-",
+    );
+    row(
+      lang === "bm" ? "Masa pemulangan" : "Return time",
+      displayWorkTime(rental.return_time, lang),
+    );
+    row(
+      lang === "bm" ? "Catatan pemulangan" : "Return notes",
+      rental.return_notes || "-",
+    );
     y += 5;
   });
   const pages = doc.getNumberOfPages();
@@ -2277,34 +2300,12 @@ function RentalsView({
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [detail, setDetail] = useState<Rental | null>(null);
+  const [returning, setReturning] = useState<Rental | null>(null);
   const rows = (rentals as Rental[]).filter((r) =>
     `${r.rental_no} ${r.customer_name} ${r.customer_phone || ""}`
       .toLowerCase()
       .includes(q.toLowerCase()),
   );
-  async function markReturned(rental: Rental) {
-    if (
-      !confirm(
-        lang === "bm"
-          ? "Sahkan semua peralatan telah dipulangkan?"
-          : "Confirm all equipment has been returned?",
-      )
-    )
-      return;
-    const { error } = await supabase
-      .from("rentals")
-      .update({
-        status: "returned",
-        actual_return_date: new Date().toISOString().slice(0, 10),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", rental.id);
-    if (error) return alert(error.message);
-    setNotice(
-      lang === "bm" ? "Pemulangan berjaya direkodkan." : "Return recorded.",
-    );
-    refresh();
-  }
   async function archiveRental(rental: Rental) {
     if (
       !confirm(
@@ -2414,11 +2415,21 @@ function RentalsView({
                     {profile.role !== "auditor" && r.status === "out" && (
                       <button
                         className="text-btn"
-                        onClick={() => markReturned(r)}
+                        onClick={() => setReturning(r)}
                       >
                         {lang === "bm" ? "Pulang" : "Return"}
                       </button>
                     )}
+                    {profile.role !== "auditor" &&
+                      r.status !== "out" &&
+                      r.status !== "cancelled" && (
+                        <button
+                          className="text-btn"
+                          onClick={() => setReturning(r)}
+                        >
+                          {lang === "bm" ? "Edit Pulangan" : "Edit Return"}
+                        </button>
+                      )}
                     {profile.role === "admin" && (
                       <button
                         className="text-btn danger-text-small"
@@ -2462,11 +2473,29 @@ function RentalsView({
           close={() => setDetail(null)}
           returned={() => {
             setDetail(null);
-            markReturned(detail);
+            setReturning(detail);
           }}
           remove={() => {
             setDetail(null);
             archiveRental(detail);
+          }}
+        />
+      )}
+      {returning && (
+        <RentalReturnModal
+          t={t}
+          lang={lang}
+          rental={returning}
+          user={user}
+          close={() => setReturning(null)}
+          done={() => {
+            setReturning(null);
+            refresh();
+            setNotice(
+              lang === "bm"
+                ? "Rekod pemulangan berjaya disimpan."
+                : "Return record saved.",
+            );
           }}
         />
       )}
@@ -2534,6 +2563,22 @@ function RentalDetailsModal({
           <p>
             <strong>{t.remarks}:</strong> {rental.notes || "-"}
           </p>
+          <p>
+            <strong>
+              {lang === "bm" ? "Masa Pemulangan" : "Return Time"}:
+            </strong>{" "}
+            {displayWorkTime(rental.return_time, lang)}
+          </p>
+          <p>
+            <strong>
+              {lang === "bm" ? "Catatan Pemulangan" : "Return Notes"}:
+            </strong>{" "}
+            {rental.return_notes || "-"}
+          </p>
+          <p>
+            <strong>{t.verification}:</strong>{" "}
+            {rental.return_verification_method || "-"}
+          </p>
         </div>
         <div className="table-wrap rental-detail-items">
           <table>
@@ -2541,9 +2586,12 @@ function RentalDetailsModal({
               <tr>
                 <th>{lang === "bm" ? "Peralatan" : "Equipment"}</th>
                 <th>{lang === "bm" ? "Variasi" : "Variant"}</th>
-                <th>{t.quantity}</th>
+                <th>
+                  {lang === "bm" ? "Disewa / Pulang" : "Rented / Returned"}
+                </th>
                 <th>{lang === "bm" ? "Keadaan Keluar" : "Condition Out"}</th>
                 <th>{lang === "bm" ? "Keadaan Pulang" : "Condition In"}</th>
+                <th>{lang === "bm" ? "Catatan / Caj" : "Notes / Charge"}</th>
               </tr>
             </thead>
             <tbody>
@@ -2557,9 +2605,17 @@ function RentalDetailsModal({
                       : "Item"}
                   </td>
                   <td>{item.inventory_items?.variant || "-"}</td>
-                  <td>{item.quantity}</td>
+                  <td>
+                    {item.quantity} / {item.returned_quantity || 0}
+                  </td>
                   <td>{item.condition_out}</td>
-                  <td>{item.condition_in || "-"}</td>
+                  <td>{item.return_status || item.condition_in || "-"}</td>
+                  <td>
+                    {item.damage_notes || "-"}
+                    <small className="block-muted">
+                      RM {Number(item.damage_charge || 0).toFixed(2)}
+                    </small>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -2571,9 +2627,15 @@ function RentalDetailsModal({
               {lang === "bm" ? "Padam Rekod" : "Delete Record"}
             </button>
           )}
-          {profile.role !== "auditor" && rental.status === "out" && (
+          {profile.role !== "auditor" && rental.status !== "cancelled" && (
             <button className="secondary" onClick={returned}>
-              {lang === "bm" ? "Rekod Pemulangan" : "Record Return"}
+              {rental.status === "out"
+                ? lang === "bm"
+                  ? "Rekod Pemulangan"
+                  : "Record Return"
+                : lang === "bm"
+                  ? "Edit Pemulangan"
+                  : "Edit Return"}
             </button>
           )}
           <button
@@ -2586,6 +2648,289 @@ function RentalDetailsModal({
             {lang === "bm" ? "Tutup" : "Close"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RentalReturnModal({ t, lang, rental, user, close, done }: any) {
+  const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [method, setMethod] = useState(
+    rental.return_verification_method || "signature",
+  );
+  const [signature, setSignature] = useState("");
+  const [pin, setPin] = useState("");
+  const [returnDate, setReturnDate] = useState(
+    rental.actual_return_date || new Date().toISOString().slice(0, 10),
+  );
+  const [returnTime, setReturnTime] = useState(
+    rental.return_time?.slice(0, 5) || new Date().toTimeString().slice(0, 5),
+  );
+  const [notes, setNotes] = useState(rental.return_notes || "");
+  const [lines, setLines] = useState(
+    (rental.rental_items || []).map((item: RentalItem) => ({
+      ...item,
+      returned_quantity: item.return_status
+        ? item.returned_quantity
+        : item.quantity,
+      return_status: item.return_status || "Good",
+      damage_notes: item.damage_notes || "",
+      damage_charge: Number(item.damage_charge || 0),
+    })),
+  );
+  const lineSet = (index: number, key: string, value: any) =>
+    setLines(
+      lines.map((line: any, i: number) =>
+        i === index ? { ...line, [key]: value } : line,
+      ),
+    );
+  async function upload(file: Blob, name: string) {
+    const path = `${user.id}/${rental.id}/${Date.now()}-${name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+    const { error } = await supabase.storage
+      .from("rental-media")
+      .upload(path, file);
+    if (error) throw error;
+    return path;
+  }
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      if (method === "pin") {
+        const { data, error } = await supabase.rpc("verify_my_pin", {
+          p_pin: pin,
+        });
+        if (error || !data)
+          throw new Error(lang === "bm" ? "PIN tidak sah." : "Invalid PIN.");
+      }
+      if (method === "signature" && !signature && !rental.return_signature_path)
+        throw new Error(
+          lang === "bm"
+            ? "Sila lukis tandatangan."
+            : "Please draw a signature.",
+        );
+      for (const line of lines) {
+        const { error } = await supabase
+          .from("rental_items")
+          .update({
+            returned_quantity: Number(line.returned_quantity),
+            return_status: line.return_status,
+            condition_in: line.return_status,
+            damage_notes: line.damage_notes || null,
+            damage_charge: Number(line.damage_charge || 0),
+          })
+          .eq("id", line.id);
+        if (error) throw error;
+      }
+      const photos = [...(rental.return_photo_paths || [])];
+      for (const file of files) photos.push(await upload(file, file.name));
+      let signaturePath = rental.return_signature_path || null;
+      if (signature) {
+        const blob = await (await fetch(signature)).blob();
+        signaturePath = await upload(blob, "return-signature.png");
+      }
+      const complete = lines.every(
+        (line: any) =>
+          Number(line.returned_quantity) >= Number(line.quantity) ||
+          line.return_status === "Lost",
+      );
+      const { error } = await supabase
+        .from("rentals")
+        .update({
+          actual_return_date: returnDate,
+          return_time: returnTime,
+          return_notes: notes || null,
+          return_photo_paths: photos,
+          return_signature_path: signaturePath,
+          return_verification_method: method,
+          returned_by: user.id,
+          status: complete ? "returned" : "partial_return",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", rental.id);
+      if (error) throw error;
+      done();
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <div className="modal return-modal">
+        <div className="modal-head">
+          <div>
+            <span>{rental.rental_no}</span>
+            <h2>{lang === "bm" ? "Rekod Pemulangan" : "Record Return"}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            <label>
+              {lang === "bm" ? "Tarikh Pemulangan" : "Return Date"}
+              <input
+                type="date"
+                required
+                value={returnDate}
+                onChange={(e) => setReturnDate(e.target.value)}
+              />
+            </label>
+            <label>
+              {lang === "bm" ? "Masa Pemulangan" : "Return Time"}
+              <input
+                type="time"
+                required
+                value={returnTime}
+                onChange={(e) => setReturnTime(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="return-lines">
+            {lines.map((line: any, index: number) => (
+              <div className="return-line" key={line.id}>
+                <div className="return-item-name">
+                  <strong>
+                    {line.inventory_items
+                      ? lang === "bm"
+                        ? line.inventory_items.name_bm
+                        : line.inventory_items.name_en
+                      : "Item"}
+                  </strong>
+                  <small>
+                    {line.inventory_items?.variant || "-"} ·{" "}
+                    {lang === "bm" ? "Disewa" : "Rented"}: {line.quantity}
+                  </small>
+                </div>
+                <label>
+                  {lang === "bm" ? "Kuantiti Pulang" : "Returned Qty"}
+                  <input
+                    type="number"
+                    min="0"
+                    max={line.quantity}
+                    required
+                    value={line.returned_quantity}
+                    onChange={(e) =>
+                      lineSet(
+                        index,
+                        "returned_quantity",
+                        Number(e.target.value),
+                      )
+                    }
+                  />
+                </label>
+                <label>
+                  {lang === "bm" ? "Keadaan" : "Condition"}
+                  <select
+                    value={line.return_status}
+                    onChange={(e) =>
+                      lineSet(index, "return_status", e.target.value)
+                    }
+                  >
+                    <option value="Good">Good</option>
+                    <option value="Needs Cleaning">Needs Cleaning</option>
+                    <option value="Needs Attention">Needs Attention</option>
+                    <option value="Damaged">Damaged</option>
+                    <option value="Lost">Lost</option>
+                  </select>
+                </label>
+                <label>
+                  {lang === "bm" ? "Catatan" : "Notes"}
+                  <input
+                    value={line.damage_notes}
+                    onChange={(e) =>
+                      lineSet(index, "damage_notes", e.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  {lang === "bm" ? "Caj (RM)" : "Charge (RM)"}
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={line.damage_charge}
+                    onChange={(e) =>
+                      lineSet(index, "damage_charge", Number(e.target.value))
+                    }
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+          <label>
+            {lang === "bm" ? "Catatan Keseluruhan" : "Overall Return Notes"}
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </label>
+          <label>
+            {lang === "bm"
+              ? "Gambar Keadaan Pemulangan"
+              : "Return Condition Photos"}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              capture="environment"
+              onChange={(e) => setFiles(Array.from(e.target.files || []))}
+            />
+          </label>
+          <div className="segmented">
+            <button
+              type="button"
+              className={method === "signature" ? "active" : ""}
+              onClick={() => setMethod("signature")}
+            >
+              {t.signature}
+            </button>
+            <button
+              type="button"
+              className={method === "pin" ? "active" : ""}
+              onClick={() => setMethod("pin")}
+            >
+              {t.pin}
+            </button>
+          </div>
+          {method === "signature" ? (
+            <SignaturePad
+              onChange={setSignature}
+              label={
+                rental.return_signature_path
+                  ? lang === "bm"
+                    ? "Tandatangan baharu (pilihan)"
+                    : "New signature (optional)"
+                  : t.signature
+              }
+              clearLabel={t.clear}
+            />
+          ) : (
+            <label>
+              {t.pin}
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]{4,8}"
+                required
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+              />
+            </label>
+          )}
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={close}>
+              {t.cancel}
+            </button>
+            <button className="primary" disabled={busy}>
+              {busy ? t.loading : t.save}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
