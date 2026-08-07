@@ -378,6 +378,21 @@ header p {
   margin-top: 18px;
   padding-top: 16px;
 }
+.archive-tabs {
+  min-width: 250px;
+}
+.archive-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.archive-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .list-row strong,
 .list-row small {
   display: block;
@@ -1006,6 +1021,9 @@ code {
     box-shadow: 0 8px 25px #0b6fae55;
   }
   .two-col {
+    grid-template-columns: 1fr;
+  }
+  .archive-sections {
     grid-template-columns: 1fr;
   }
   .card-grid,
