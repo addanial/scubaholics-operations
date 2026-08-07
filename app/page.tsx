@@ -2542,7 +2542,7 @@ function ProfileView({ t, lang, profile, refresh, setNotice }: any) {
   return (
     <section>
       <div className="panel profile-card">
-        <div className="avatar large">
+        <div className="avatar profile-avatar">
           {profile.avatar_path ? (
             <img
               src={profileImageUrl(profile.avatar_path)}
