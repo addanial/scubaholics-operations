@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Box,
+  CalendarRange,
   ClipboardList,
   FileDown,
   Gauge,
@@ -28,6 +29,7 @@ type Tab =
   | "jobs"
   | "equipment"
   | "inventory"
+  | "rentals"
   | "users"
   | "profile";
 type Profile = {
@@ -36,6 +38,7 @@ type Profile = {
   role: string;
   status: string;
   language: string;
+  avatar_path: string | null;
 };
 type Equipment = {
   id: string;
@@ -43,6 +46,8 @@ type Equipment = {
   name_bm: string;
   name_en: string;
   category: string;
+  equipment_type: string | null;
+  location: string | null;
   service_interval_days: number;
   serial_no: string | null;
   item_condition: string;
@@ -53,6 +58,8 @@ type Inventory = {
   id: string;
   sku: string;
   category: string;
+  equipment_type: string | null;
+  location: string | null;
   name_bm: string;
   name_en: string;
   variant: string | null;
@@ -82,6 +89,7 @@ type Job = {
   inventory_item_id: string | null;
   job_type: string;
   service_date: string;
+  work_time: string | null;
   work_done: string;
   fault: string | null;
   remarks: string | null;
@@ -95,6 +103,31 @@ type Job = {
   } | null;
   profiles?: { full_name: string } | null;
 };
+type RentalItem = {
+  id: string;
+  inventory_item_id: string;
+  quantity: number;
+  condition_out: string;
+  condition_in: string | null;
+  inventory_items?: Inventory | null;
+};
+type Rental = {
+  id: string;
+  rental_no: string;
+  customer_name: string;
+  customer_phone: string | null;
+  rental_date: string;
+  expected_return_date: string;
+  actual_return_date: string | null;
+  status: string;
+  total_amount: number;
+  deposit_amount: number;
+  payment_status: string;
+  notes: string | null;
+  created_at: string;
+  profiles?: { full_name: string } | null;
+  rental_items?: RentalItem[];
+};
 
 const copy = {
   bm: {
@@ -102,6 +135,7 @@ const copy = {
     jobs: "Rekod Kerja",
     equipment: "Peralatan",
     inventory: "Inventori",
+    rentals: "Penyewaan",
     users: "Pengguna",
     profile: "Profil & PIN",
     logout: "Log Keluar",
@@ -134,7 +168,7 @@ const copy = {
     remarks: "Catatan",
     jobType: "Jenis Kerja",
     date: "Tarikh",
-    runningHours: "Jam Operasi",
+    runningHours: "Masa Kerja Dilaksanakan",
     verification: "Pengesahan",
     signature: "Tandatangan",
     pin: "PIN",
@@ -167,6 +201,7 @@ const copy = {
     jobs: "Job Records",
     equipment: "Equipment",
     inventory: "Inventory",
+    rentals: "Rentals",
     users: "Users",
     profile: "Profile & PIN",
     logout: "Log Out",
@@ -199,7 +234,7 @@ const copy = {
     remarks: "Remarks",
     jobType: "Job Type",
     date: "Date",
-    runningHours: "Running Hours",
+    runningHours: "Work Performed Time",
     verification: "Verification",
     signature: "Signature",
     pin: "PIN",
@@ -243,6 +278,12 @@ function fmtDate(d: string | Date, lang: Lang) {
     month: "short",
     year: "numeric",
   }).format(new Date(d));
+}
+
+function profileImageUrl(path?: string | null) {
+  if (!path) return "";
+  return supabase.storage.from("profile-images").getPublicUrl(path).data
+    .publicUrl;
 }
 
 function SignaturePad({
@@ -323,6 +364,7 @@ export default function App() {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [rentals, setRentals] = useState<Rental[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [showJob, setShowJob] = useState(false);
@@ -340,7 +382,7 @@ export default function App() {
       setLang((p.data.language || "bm") as Lang);
     }
     if (p.data?.status === "active") {
-      const [e, i, j, m] = await Promise.all([
+      const [e, i, j, m, r] = await Promise.all([
         supabase.from("equipment").select("*").order("code"),
         supabase
           .from("inventory_items")
@@ -355,11 +397,16 @@ export default function App() {
           .order("service_date", { ascending: false })
           .limit(100),
         supabase.from("maintenance_schedules").select("*").eq("active", true),
+        supabase
+          .from("rentals")
+          .select("*,profiles(full_name),rental_items(*,inventory_items(*))")
+          .order("rental_date", { ascending: false }),
       ]);
       setEquipment((e.data || []) as Equipment[]);
       setInventory((i.data || []) as Inventory[]);
       setJobs((j.data || []) as Job[]);
       setSchedules((m.data || []) as Schedule[]);
+      setRentals((r.data || []) as Rental[]);
       if (p.data.role === "admin") {
         const u = await supabase
           .from("profiles")
@@ -433,6 +480,7 @@ export default function App() {
     ["jobs", <ClipboardList key="j" />, t.jobs],
     ["equipment", <Wrench key="e" />, t.equipment],
     ["inventory", <Box key="i" />, t.inventory],
+    ["rentals", <CalendarRange key="r" />, t.rentals],
     ...(profile.role === "admin"
       ? [
           ["users" as Tab, <Users key="u" />, t.users] as [
@@ -468,7 +516,14 @@ export default function App() {
         </nav>
         <div className="sidebar-foot">
           <div className="avatar">
-            {profile.full_name?.[0]?.toUpperCase() || "S"}
+            {profile.avatar_path ? (
+              <img
+                src={profileImageUrl(profile.avatar_path)}
+                alt={profile.full_name}
+              />
+            ) : (
+              profile.full_name?.[0]?.toUpperCase() || "S"
+            )}
           </div>
           <div>
             <strong>{profile.full_name}</strong>
@@ -547,6 +602,18 @@ export default function App() {
           />
         )}
         {tab === "jobs" && <JobsView t={t} lang={lang} jobs={jobs} />}
+        {tab === "rentals" && (
+          <RentalsView
+            t={t}
+            lang={lang}
+            rentals={rentals}
+            inventory={inventory}
+            profile={profile}
+            user={session.user}
+            refresh={refresh}
+            setNotice={setNotice}
+          />
+        )}
         {tab === "users" && profile.role === "admin" && (
           <UsersView
             t={t}
@@ -558,7 +625,13 @@ export default function App() {
           />
         )}
         {tab === "profile" && (
-          <ProfileView t={t} profile={profile} setNotice={setNotice} />
+          <ProfileView
+            t={t}
+            lang={lang}
+            profile={profile}
+            refresh={refresh}
+            setNotice={setNotice}
+          />
         )}
       </main>
       {showJob && (
@@ -984,8 +1057,8 @@ function EquipmentEditor({ t, lang, data, close, done }: any) {
   const [type, setType] = useState("inventory");
   const [form, setForm] = useState({
     category: "",
-    name_bm: "",
-    name_en: "",
+    equipment_type: "Dive Equipment",
+    location: "Dive Centre Jetty",
     variant: "",
     quantity: "1",
     unit: "unit",
@@ -1034,35 +1107,35 @@ function EquipmentEditor({ t, lang, data, close, done }: any) {
         }
       } else if (type === "service") {
         const category = form.category.toLowerCase();
-        const { error } = await supabase
-          .from("equipment")
-          .insert({
-            code: form.code,
-            name_bm: form.name_bm,
-            name_en: form.name_en,
-            category,
-            service_interval_days: Number(form.interval),
-            serial_no: form.serial_no || null,
-            item_condition: form.condition,
-            last_service: new Date().toISOString().slice(0, 10),
-          });
+        const { error } = await supabase.from("equipment").insert({
+          code: form.code,
+          name_bm: form.category,
+          name_en: form.category,
+          category,
+          equipment_type: form.equipment_type,
+          location: form.location,
+          service_interval_days: Number(form.interval),
+          serial_no: form.serial_no || null,
+          item_condition: form.condition,
+          last_service: new Date().toISOString().slice(0, 10),
+        });
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from("inventory_items")
-          .insert({
-            sku: form.sku.toUpperCase(),
-            category: form.category,
-            name_bm: form.name_bm,
-            name_en: form.name_en,
-            variant: form.variant || null,
-            quantity: Number(form.quantity),
-            unit: form.unit,
-            item_condition: form.condition,
-            serial_no: form.serial_no || null,
-            service_interval_days: Number(form.interval),
-            reorder_level: 0,
-          });
+        const { error } = await supabase.from("inventory_items").insert({
+          sku: form.sku.toUpperCase(),
+          category: form.category,
+          name_bm: form.category,
+          name_en: form.category,
+          equipment_type: form.equipment_type,
+          location: form.location,
+          variant: form.variant || null,
+          quantity: Number(form.quantity),
+          unit: form.unit,
+          item_condition: form.condition,
+          serial_no: form.serial_no || null,
+          service_interval_days: Number(form.interval),
+          reorder_level: 0,
+        });
         if (error) throw error;
       }
       done();
@@ -1105,7 +1178,7 @@ function EquipmentEditor({ t, lang, data, close, done }: any) {
               </div>
               <div className="form-grid">
                 <label>
-                  {t.category}
+                  {lang === "bm" ? "Nama Peralatan" : "Equipment Name"}
                   <input
                     required
                     value={form.category}
@@ -1126,20 +1199,29 @@ function EquipmentEditor({ t, lang, data, close, done }: any) {
                   />
                 </label>
                 <label>
-                  Nama BM
-                  <input
+                  {lang === "bm" ? "Jenis Peralatan" : "Equipment Type"}
+                  <select
                     required
-                    value={form.name_bm}
-                    onChange={(e) => set("name_bm", e.target.value)}
-                  />
+                    value={form.equipment_type}
+                    onChange={(e) => set("equipment_type", e.target.value)}
+                  >
+                    <option value="Transport">Transport</option>
+                    <option value="Dive Equipment">Dive Equipment</option>
+                    <option value="Office Equipment">Office Equipment</option>
+                    <option value="Other Equipment">Other Equipment</option>
+                  </select>
                 </label>
                 <label>
-                  English Name
-                  <input
+                  {lang === "bm" ? "Lokasi" : "Location"}
+                  <select
                     required
-                    value={form.name_en}
-                    onChange={(e) => set("name_en", e.target.value)}
-                  />
+                    value={form.location}
+                    onChange={(e) => set("location", e.target.value)}
+                  >
+                    <option value="Dive Centre Jetty">Dive Centre Jetty</option>
+                    <option value="HSR">HSR</option>
+                    <option value="Land Office">Land Office</option>
+                  </select>
                 </label>
                 {type === "inventory" ? (
                   <>
@@ -1330,7 +1412,11 @@ function EquipmentEditor({ t, lang, data, close, done }: any) {
                           min="1"
                           value={r.service_interval_days}
                           onChange={(e) =>
-                            rowSet(index, "service_interval_days", e.target.value)
+                            rowSet(
+                              index,
+                              "service_interval_days",
+                              e.target.value,
+                            )
                           }
                         />
                       </label>
@@ -1399,15 +1485,13 @@ function InventoryView({
       .update({ quantity: qty, updated_at: new Date().toISOString() })
       .eq("id", i.id);
     if (error) return alert(error.message);
-    await supabase
-      .from("stock_movements")
-      .insert({
-        inventory_item_id: i.id,
-        movement_type: "adjustment",
-        quantity: Math.abs(qty - i.quantity) || 1,
-        reason: `Adjusted ${i.quantity} to ${qty}`,
-        created_by: profile.id,
-      });
+    await supabase.from("stock_movements").insert({
+      inventory_item_id: i.id,
+      movement_type: "adjustment",
+      quantity: Math.abs(qty - i.quantity) || 1,
+      reason: `Adjusted ${i.quantity} to ${qty}`,
+      created_by: profile.id,
+    });
     setNotice(
       lang === "bm"
         ? "Kuantiti inventori dikemas kini."
@@ -1484,9 +1568,7 @@ function jobEquipmentName(job: Job, lang: Lang) {
   }
   if (job.inventory_items) {
     const name =
-      lang === "bm"
-        ? job.inventory_items.name_bm
-        : job.inventory_items.name_en;
+      lang === "bm" ? job.inventory_items.name_bm : job.inventory_items.name_en;
     return `${name}${job.inventory_items.variant ? ` - ${job.inventory_items.variant}` : ""}`;
   }
   return job.equipment_category || job.job_type || "-";
@@ -1554,11 +1636,29 @@ async function printWorkRecords(records: Job[], lang: Lang) {
     doc.setTextColor(10, 64, 92);
     doc.text(`${index + 1}. ${job.job_no}`, margin + 2, y + 1);
     y += 8;
-    field(lang === "bm" ? "Peralatan" : "Equipment", jobEquipmentName(job, lang));
-    field(lang === "bm" ? "Tarikh servis" : "Service date", fmtDate(job.service_date, lang));
+    field(
+      lang === "bm" ? "Peralatan" : "Equipment",
+      jobEquipmentName(job, lang),
+    );
+    field(
+      lang === "bm" ? "Tarikh servis" : "Service date",
+      fmtDate(job.service_date, lang),
+    );
+    field(
+      lang === "bm" ? "Masa kerja dilaksanakan" : "Work performed time",
+      job.work_time
+        ? new Date(`2000-01-01T${job.work_time}`).toLocaleTimeString(
+            lang === "bm" ? "ms-MY" : "en-US",
+            { hour: "numeric", minute: "2-digit", hour12: true },
+          )
+        : null,
+    );
     field(lang === "bm" ? "Jenis kerja" : "Job type", job.job_type);
     field(lang === "bm" ? "Staf" : "Staff", job.profiles?.full_name || "Staff");
-    field(lang === "bm" ? "Kaedah pengesahan" : "Verification", job.verification_method);
+    field(
+      lang === "bm" ? "Kaedah pengesahan" : "Verification",
+      job.verification_method,
+    );
     field(lang === "bm" ? "Kerosakan" : "Fault", job.fault);
     field(lang === "bm" ? "Kerja dilakukan" : "Work done", job.work_done);
     field(lang === "bm" ? "Catatan" : "Remarks", job.remarks);
@@ -1620,7 +1720,9 @@ function JobsView({ t, lang, jobs }: any) {
                 <button
                   className="text-btn pdf-record-btn"
                   onClick={() => printWorkRecords([j], lang)}
-                  title={lang === "bm" ? "Cetak rekod ini" : "Print this record"}
+                  title={
+                    lang === "bm" ? "Cetak rekod ini" : "Print this record"
+                  }
                 >
                   <FileDown size={15} /> PDF
                 </button>
@@ -1653,6 +1755,493 @@ function JobsView({ t, lang, jobs }: any) {
   );
 }
 
+async function printRentalRecords(records: Rental[], lang: Lang) {
+  if (!records.length) return;
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const width = doc.internal.pageSize.getWidth();
+  const height = doc.internal.pageSize.getHeight();
+  const margin = 15;
+  let y = 16;
+  const header = () => {
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(10, 64, 92);
+    doc.setFontSize(16);
+    doc.text("SCUBAHOLICS SDN BHD", margin, y);
+    y += 7;
+    doc.setFontSize(12);
+    doc.text("REKOD PENYEWAAN / RENTAL RECORDS", margin, y);
+    y += 7;
+    doc.setDrawColor(190, 205, 214);
+    doc.line(margin, y, width - margin, y);
+    y += 7;
+  };
+  const space = (amount: number) => {
+    if (y + amount < height - 14) return;
+    doc.addPage();
+    y = 16;
+    header();
+  };
+  const row = (label: string, value: string) => {
+    const lines = doc.splitTextToSize(
+      `${label}: ${value || "-"}`,
+      width - margin * 2 - 4,
+    );
+    space(lines.length * 4.4 + 1);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(35, 50, 60);
+    doc.text(lines, margin + 2, y);
+    y += lines.length * 4.4 + 1;
+  };
+  header();
+  records.forEach((rental, index) => {
+    space(58);
+    doc.setFillColor(237, 245, 248);
+    doc.roundedRect(margin, y - 4, width - margin * 2, 8, 1.5, 1.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(10, 64, 92);
+    doc.text(`${index + 1}. ${rental.rental_no}`, margin + 2, y + 1);
+    y += 8;
+    row(lang === "bm" ? "Pelanggan" : "Customer", rental.customer_name);
+    row(lang === "bm" ? "Telefon" : "Phone", rental.customer_phone || "-");
+    row(
+      lang === "bm" ? "Tarikh keluar" : "Rental date",
+      fmtDate(rental.rental_date, lang),
+    );
+    row(
+      lang === "bm" ? "Jangka pulang" : "Expected return",
+      fmtDate(rental.expected_return_date, lang),
+    );
+    row(lang === "bm" ? "Status" : "Status", rental.status.toUpperCase());
+    row(
+      lang === "bm" ? "Peralatan" : "Equipment",
+      (rental.rental_items || [])
+        .map((item) => {
+          const inv = item.inventory_items;
+          const name = inv
+            ? lang === "bm"
+              ? inv.name_bm
+              : inv.name_en
+            : "Item";
+          return `${name}${inv?.variant ? ` (${inv.variant})` : ""} x ${item.quantity}`;
+        })
+        .join(", "),
+    );
+    row(
+      lang === "bm" ? "Jumlah" : "Total",
+      `RM ${Number(rental.total_amount).toFixed(2)}`,
+    );
+    row(
+      lang === "bm" ? "Deposit" : "Deposit",
+      `RM ${Number(rental.deposit_amount).toFixed(2)}`,
+    );
+    row(
+      lang === "bm" ? "Bayaran" : "Payment",
+      rental.payment_status.toUpperCase(),
+    );
+    row(lang === "bm" ? "Catatan" : "Notes", rental.notes || "-");
+    y += 5;
+  });
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(8);
+    doc.setTextColor(110, 120, 128);
+    doc.text(`${page} / ${pages}`, width - margin, height - 7, {
+      align: "right",
+    });
+  }
+  const suffix =
+    records.length === 1
+      ? records[0].rental_no
+      : new Date().toISOString().slice(0, 10);
+  doc.save(`SCUBAHOLICS-Rekod-Penyewaan-${suffix}.pdf`);
+}
+
+function RentalsView({
+  t,
+  lang,
+  rentals,
+  inventory,
+  profile,
+  user,
+  refresh,
+  setNotice,
+}: any) {
+  const [q, setQ] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const rows = (rentals as Rental[]).filter((r) =>
+    `${r.rental_no} ${r.customer_name} ${r.customer_phone || ""}`
+      .toLowerCase()
+      .includes(q.toLowerCase()),
+  );
+  async function markReturned(rental: Rental) {
+    if (
+      !confirm(
+        lang === "bm"
+          ? "Sahkan semua peralatan telah dipulangkan?"
+          : "Confirm all equipment has been returned?",
+      )
+    )
+      return;
+    const { error } = await supabase
+      .from("rentals")
+      .update({
+        status: "returned",
+        actual_return_date: new Date().toISOString().slice(0, 10),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", rental.id);
+    if (error) return alert(error.message);
+    setNotice(
+      lang === "bm" ? "Pemulangan berjaya direkodkan." : "Return recorded.",
+    );
+    refresh();
+  }
+  return (
+    <section>
+      <div className="toolbar rental-toolbar">
+        <div className="search">
+          <Search />
+          <input
+            placeholder={t.search}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+        <div className="toolbar-buttons">
+          <button
+            className="secondary"
+            disabled={!rows.length}
+            onClick={() => printRentalRecords(rows, lang)}
+          >
+            <FileDown size={17} />{" "}
+            {lang === "bm" ? "Cetak Rekod Penyewaan" : "Print Rental Records"}
+          </button>
+          {profile.role !== "auditor" && (
+            <button className="primary" onClick={() => setShowAdd(true)}>
+              <Plus size={17} />{" "}
+              {lang === "bm" ? "Penyewaan Baharu" : "New Rental"}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{lang === "bm" ? "No. Sewaan" : "Rental No."}</th>
+              <th>{lang === "bm" ? "Pelanggan" : "Customer"}</th>
+              <th>{lang === "bm" ? "Peralatan" : "Equipment"}</th>
+              <th>{lang === "bm" ? "Keluar / Pulang" : "Out / Return"}</th>
+              <th>Status</th>
+              <th>{lang === "bm" ? "Jumlah" : "Total"}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td>
+                  <strong>{r.rental_no}</strong>
+                </td>
+                <td>
+                  {r.customer_name}
+                  <small className="block-muted">
+                    {r.customer_phone || "-"}
+                  </small>
+                </td>
+                <td>
+                  {(r.rental_items || [])
+                    .map(
+                      (item) =>
+                        `${item.inventory_items?.name_bm || "Item"}${item.inventory_items?.variant ? ` ${item.inventory_items.variant}` : ""} x${item.quantity}`,
+                    )
+                    .join(", ")}
+                </td>
+                <td>
+                  {fmtDate(r.rental_date, lang)}
+                  <small className="block-muted">
+                    {fmtDate(r.expected_return_date, lang)}
+                  </small>
+                </td>
+                <td>
+                  <span
+                    className={`badge ${r.status === "returned" ? "ok" : new Date(r.expected_return_date) < new Date() ? "danger" : "warn"}`}
+                  >
+                    {r.status}
+                  </span>
+                </td>
+                <td>RM {Number(r.total_amount).toFixed(2)}</td>
+                <td>
+                  <div className="record-actions">
+                    <button
+                      className="text-btn"
+                      onClick={() => printRentalRecords([r], lang)}
+                    >
+                      <FileDown size={14} /> PDF
+                    </button>
+                    {profile.role !== "auditor" && r.status === "out" && (
+                      <button
+                        className="text-btn"
+                        onClick={() => markReturned(r)}
+                      >
+                        {lang === "bm" ? "Pulang" : "Return"}
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && <div className="empty">{t.noData}</div>}
+      </div>
+      {showAdd && (
+        <RentalModal
+          t={t}
+          lang={lang}
+          inventory={inventory}
+          user={user}
+          close={() => setShowAdd(false)}
+          done={() => {
+            setShowAdd(false);
+            refresh();
+            setNotice(
+              lang === "bm"
+                ? "Rekod penyewaan berjaya disimpan."
+                : "Rental record saved.",
+            );
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function RentalModal({ t, lang, inventory, close, done }: any) {
+  const rentable = inventory as Inventory[];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    customer_name: "",
+    customer_phone: "",
+    rental_date: new Date().toISOString().slice(0, 10),
+    expected_return_date: tomorrow,
+    total_amount: "",
+    deposit_amount: "",
+    payment_status: "unpaid",
+    notes: "",
+  });
+  const [items, setItems] = useState([
+    {
+      inventory_item_id: rentable[0]?.id || "",
+      quantity: 1,
+      condition_out: "Good",
+    },
+  ]);
+  const set = (key: string, value: string) =>
+    setForm({ ...form, [key]: value });
+  const setItem = (index: number, key: string, value: string | number) =>
+    setItems(
+      items.map((item, i) => (i === index ? { ...item, [key]: value } : item)),
+    );
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const { error } = await supabase.rpc("create_rental", {
+      p_customer_name: form.customer_name,
+      p_customer_phone: form.customer_phone,
+      p_rental_date: form.rental_date,
+      p_expected_return_date: form.expected_return_date,
+      p_total_amount: Number(form.total_amount || 0),
+      p_deposit_amount: Number(form.deposit_amount || 0),
+      p_payment_status: form.payment_status,
+      p_notes: form.notes,
+      p_items: items,
+    });
+    setBusy(false);
+    if (error) return alert(error.message);
+    done();
+  }
+  return (
+    <div className="modal-backdrop">
+      <div className="modal rental-modal">
+        <div className="modal-head">
+          <div>
+            <span>SCUBAHOLICS</span>
+            <h2>{lang === "bm" ? "Penyewaan Baharu" : "New Rental"}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            <label>
+              {lang === "bm" ? "Nama Pelanggan" : "Customer Name"}
+              <input
+                required
+                value={form.customer_name}
+                onChange={(e) => set("customer_name", e.target.value)}
+              />
+            </label>
+            <label>
+              {lang === "bm" ? "No. Telefon" : "Phone No."}
+              <input
+                value={form.customer_phone}
+                onChange={(e) => set("customer_phone", e.target.value)}
+              />
+            </label>
+            <label>
+              {lang === "bm" ? "Tarikh Keluar" : "Rental Date"}
+              <input
+                type="date"
+                required
+                value={form.rental_date}
+                onChange={(e) => set("rental_date", e.target.value)}
+              />
+            </label>
+            <label>
+              {lang === "bm" ? "Jangka Tarikh Pulang" : "Expected Return"}
+              <input
+                type="date"
+                required
+                min={form.rental_date}
+                value={form.expected_return_date}
+                onChange={(e) => set("expected_return_date", e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="rental-lines">
+            <strong>
+              {lang === "bm" ? "Peralatan Disewa" : "Rented Equipment"}
+            </strong>
+            {items.map((item, index) => {
+              const selected = rentable.find(
+                (i) => i.id === item.inventory_item_id,
+              );
+              return (
+                <div className="rental-line" key={index}>
+                  <select
+                    value={item.inventory_item_id}
+                    onChange={(e) =>
+                      setItem(index, "inventory_item_id", e.target.value)
+                    }
+                  >
+                    {rentable.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {lang === "bm" ? i.name_bm : i.name_en}
+                        {i.variant ? ` · ${i.variant}` : ""} ({i.quantity})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    max={selected?.quantity || 1}
+                    value={item.quantity}
+                    onChange={(e) =>
+                      setItem(index, "quantity", Number(e.target.value))
+                    }
+                  />
+                  <select
+                    value={item.condition_out}
+                    onChange={(e) =>
+                      setItem(index, "condition_out", e.target.value)
+                    }
+                  >
+                    <option>Good</option>
+                    <option>Fair</option>
+                    <option>Needs Attention</option>
+                  </select>
+                  {items.length > 1 && (
+                    <button
+                      type="button"
+                      className="text-btn danger-text"
+                      onClick={() =>
+                        setItems(items.filter((_, i) => i !== index))
+                      }
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="text-btn"
+              onClick={() =>
+                setItems([
+                  ...items,
+                  {
+                    inventory_item_id: rentable[0]?.id || "",
+                    quantity: 1,
+                    condition_out: "Good",
+                  },
+                ])
+              }
+            >
+              <Plus size={15} /> {lang === "bm" ? "Tambah Item" : "Add Item"}
+            </button>
+          </div>
+          <div className="form-grid">
+            <label>
+              {lang === "bm" ? "Jumlah Sewa (RM)" : "Rental Total (RM)"}
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.total_amount}
+                onChange={(e) => set("total_amount", e.target.value)}
+              />
+            </label>
+            <label>
+              Deposit (RM)
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.deposit_amount}
+                onChange={(e) => set("deposit_amount", e.target.value)}
+              />
+            </label>
+            <label>
+              {lang === "bm" ? "Status Bayaran" : "Payment Status"}
+              <select
+                value={form.payment_status}
+                onChange={(e) => set("payment_status", e.target.value)}
+              >
+                <option value="unpaid">Unpaid</option>
+                <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            {t.remarks}
+            <textarea
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+            />
+          </label>
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={close}>
+              {t.cancel}
+            </button>
+            <button className="primary" disabled={busy}>
+              {busy ? t.loading : t.save}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
   const [showAdd, setShowAdd] = useState(false);
   async function status(u: any, s: string) {
@@ -1670,14 +2259,18 @@ function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
       .update({ role, updated_at: new Date().toISOString() })
       .eq("id", u.id);
     if (error) return alert(error.message);
-    setNotice(lang === "bm" ? "Akses pengguna dikemas kini." : "User access updated.");
+    setNotice(
+      lang === "bm" ? "Akses pengguna dikemas kini." : "User access updated.",
+    );
     refresh();
   }
   return (
     <section>
       <div className="toolbar">
         <div>
-          <strong>{lang === "bm" ? "PENGURUSAN PENGGUNA" : "USER MANAGEMENT"}</strong>
+          <strong>
+            {lang === "bm" ? "PENGURUSAN PENGGUNA" : "USER MANAGEMENT"}
+          </strong>
           <small className="block-muted">
             {lang === "bm"
               ? "Admin: penuh · Staff: kerja & pemantauan · Auditor: baca sahaja"
@@ -1757,7 +2350,11 @@ function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
           done={() => {
             setShowAdd(false);
             refresh();
-            setNotice(lang === "bm" ? "Pengguna baharu berjaya ditambah." : "New user added.");
+            setNotice(
+              lang === "bm"
+                ? "Pengguna baharu berjaya ditambah."
+                : "New user added.",
+            );
           }}
         />
       )}
@@ -1767,13 +2364,22 @@ function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
 
 function AddUserModal({ t, lang, close, done }: any) {
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ full_name: "", email: "", password: "", role: "staff" });
-  const set = (key: string, value: string) => setForm({ ...form, [key]: value });
+  const [form, setForm] = useState({
+    full_name: "",
+    email: "",
+    password: "",
+    role: "staff",
+  });
+  const set = (key: string, value: string) =>
+    setForm({ ...form, [key]: value });
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-create-user", { body: form });
+      const { data, error } = await supabase.functions.invoke(
+        "admin-create-user",
+        { body: form },
+      );
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       done();
@@ -1787,28 +2393,86 @@ function AddUserModal({ t, lang, close, done }: any) {
     <div className="modal-backdrop">
       <div className="modal user-modal">
         <div className="modal-head">
-          <div><span>ADMIN</span><h2>{lang === "bm" ? "Tambah Pengguna" : "Add User"}</h2></div>
-          <button className="icon-btn" onClick={close}><X /></button>
+          <div>
+            <span>ADMIN</span>
+            <h2>{lang === "bm" ? "Tambah Pengguna" : "Add User"}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
         </div>
         <form onSubmit={submit}>
-          <label>{t.fullName}<input required value={form.full_name} onChange={(e) => set("full_name", e.target.value)} /></label>
-          <label>{t.email}<input type="email" required value={form.email} onChange={(e) => set("email", e.target.value)} /></label>
-          <label>{lang === "bm" ? "Kata Laluan Sementara" : "Temporary Password"}<input type="password" minLength={8} required value={form.password} onChange={(e) => set("password", e.target.value)} /></label>
-          <label>{lang === "bm" ? "Tahap Akses" : "Access Role"}<select value={form.role} onChange={(e) => set("role", e.target.value)}><option value="admin">Admin</option><option value="staff">Staff</option><option value="auditor">Auditor</option></select></label>
+          <label>
+            {t.fullName}
+            <input
+              required
+              value={form.full_name}
+              onChange={(e) => set("full_name", e.target.value)}
+            />
+          </label>
+          <label>
+            {t.email}
+            <input
+              type="email"
+              required
+              value={form.email}
+              onChange={(e) => set("email", e.target.value)}
+            />
+          </label>
+          <label>
+            {lang === "bm" ? "Kata Laluan Sementara" : "Temporary Password"}
+            <input
+              type="password"
+              minLength={8}
+              required
+              value={form.password}
+              onChange={(e) => set("password", e.target.value)}
+            />
+          </label>
+          <label>
+            {lang === "bm" ? "Tahap Akses" : "Access Role"}
+            <select
+              value={form.role}
+              onChange={(e) => set("role", e.target.value)}
+            >
+              <option value="admin">Admin</option>
+              <option value="staff">Staff</option>
+              <option value="auditor">Auditor</option>
+            </select>
+          </label>
           <div className="access-note">
-            {form.role === "admin" && (lang === "bm" ? "Akses penuh termasuk pengguna, peralatan dan inventori." : "Full access including users, equipment and inventory.")}
-            {form.role === "staff" && (lang === "bm" ? "Boleh mencipta kerja baharu dan memantau status peralatan." : "Can create jobs and monitor equipment status.")}
-            {form.role === "auditor" && (lang === "bm" ? "Baca sahaja: semua tugasan, kemajuan dan status peralatan." : "Read only: all jobs, progress and equipment status.")}
+            {form.role === "admin" &&
+              (lang === "bm"
+                ? "Akses penuh termasuk pengguna, peralatan dan inventori."
+                : "Full access including users, equipment and inventory.")}
+            {form.role === "staff" &&
+              (lang === "bm"
+                ? "Boleh mencipta kerja baharu dan memantau status peralatan."
+                : "Can create jobs and monitor equipment status.")}
+            {form.role === "auditor" &&
+              (lang === "bm"
+                ? "Baca sahaja: semua tugasan, kemajuan dan status peralatan."
+                : "Read only: all jobs, progress and equipment status.")}
           </div>
-          <div className="modal-actions"><button type="button" className="secondary" onClick={close}>{t.cancel}</button><button className="primary" disabled={busy}>{busy ? t.loading : t.save}</button></div>
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={close}>
+              {t.cancel}
+            </button>
+            <button className="primary" disabled={busy}>
+              {busy ? t.loading : t.save}
+            </button>
+          </div>
         </form>
       </div>
     </div>
   );
 }
 
-function ProfileView({ t, profile, setNotice }: any) {
+function ProfileView({ t, lang, profile, refresh, setNotice }: any) {
   const [pin, setPin] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
   async function save(e: React.FormEvent) {
     e.preventDefault();
     const { error } = await supabase.rpc("set_my_pin", { p_pin: pin });
@@ -1816,14 +2480,91 @@ function ProfileView({ t, profile, setNotice }: any) {
     setPin("");
     setNotice("PIN saved securely.");
   }
+  async function uploadAvatar(file?: File) {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024)
+      return alert(
+        lang === "bm"
+          ? "Gambar mesti kurang daripada 5MB."
+          : "Image must be under 5MB.",
+      );
+    setBusy(true);
+    try {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+      const path = `${profile.id}/avatar.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("profile-images")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { error } = await supabase
+        .from("profiles")
+        .update({ avatar_path: path, updated_at: new Date().toISOString() })
+        .eq("id", profile.id);
+      if (error) throw error;
+      setNotice(
+        lang === "bm"
+          ? "Gambar profil dikemas kini."
+          : "Profile image updated.",
+      );
+      refresh();
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function changePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 8)
+      return alert(
+        lang === "bm"
+          ? "Kata laluan mesti sekurang-kurangnya 8 aksara."
+          : "Password must be at least 8 characters.",
+      );
+    if (password !== confirmPassword)
+      return alert(
+        lang === "bm"
+          ? "Pengesahan kata laluan tidak sama."
+          : "Password confirmation does not match.",
+      );
+    setBusy(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setPassword("");
+    setConfirmPassword("");
+    setNotice(
+      lang === "bm"
+        ? "Kata laluan login berjaya ditukar."
+        : "Login password changed.",
+    );
+  }
   return (
     <section>
       <div className="panel profile-card">
-        <div className="avatar large">{profile.full_name?.[0]}</div>
+        <div className="avatar large">
+          {profile.avatar_path ? (
+            <img
+              src={profileImageUrl(profile.avatar_path)}
+              alt={profile.full_name}
+            />
+          ) : (
+            profile.full_name?.[0]
+          )}
+        </div>
         <h2>{profile.full_name}</h2>
         <p>
           {profile.role} · {profile.status}
         </p>
+        <label className="avatar-upload">
+          {lang === "bm" ? "Tukar Gambar Profil" : "Change Profile Image"}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            disabled={busy}
+            onChange={(e) => uploadAvatar(e.target.files?.[0])}
+          />
+        </label>
         <form onSubmit={save}>
           <label>
             {t.setPin}
@@ -1838,6 +2579,36 @@ function ProfileView({ t, profile, setNotice }: any) {
           </label>
           <small>{t.pinHelp}</small>
           <button className="primary">{t.save}</button>
+        </form>
+        <form onSubmit={changePassword}>
+          <h3>
+            {lang === "bm"
+              ? "Tukar Kata Laluan Login"
+              : "Change Login Password"}
+          </h3>
+          <label>
+            {lang === "bm" ? "Kata Laluan Baharu" : "New Password"}
+            <input
+              type="password"
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </label>
+          <label>
+            {lang === "bm" ? "Sahkan Kata Laluan" : "Confirm Password"}
+            <input
+              type="password"
+              minLength={8}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </label>
+          <button className="primary" disabled={busy}>
+            {lang === "bm" ? "Tukar Kata Laluan" : "Change Password"}
+          </button>
         </form>
       </div>
     </section>
@@ -1854,7 +2625,7 @@ function JobModal({ t, lang, equipment, user, close, done }: any) {
     equipment_id: equipment[0]?.id || "",
     job_type: "service",
     service_date: new Date().toISOString().slice(0, 10),
-    running_hours: "",
+    work_time: new Date().toTimeString().slice(0, 5),
     fault: "",
     work_done: "",
     remarks: "",
@@ -1896,21 +2667,19 @@ function JobModal({ t, lang, equipment, user, close, done }: any) {
         const blob = await (await fetch(signature)).blob();
         sigPath = await upload(blob, "signature.png");
       }
-      const { error } = await supabase
-        .from("service_jobs")
-        .insert({
-          equipment_id: form.equipment_id,
-          job_type: form.job_type,
-          service_date: form.service_date,
-          running_hours: form.running_hours ? Number(form.running_hours) : null,
-          fault: form.fault || null,
-          work_done: form.work_done,
-          remarks: form.remarks || null,
-          photo_paths: photos,
-          signature_path: sigPath,
-          verification_method: method,
-          created_by: user.id,
-        });
+      const { error } = await supabase.from("service_jobs").insert({
+        equipment_id: form.equipment_id,
+        job_type: form.job_type,
+        service_date: form.service_date,
+        work_time: form.work_time || null,
+        fault: form.fault || null,
+        work_done: form.work_done,
+        remarks: form.remarks || null,
+        photo_paths: photos,
+        signature_path: sigPath,
+        verification_method: method,
+        created_by: user.id,
+      });
       if (error) throw error;
       done();
     } catch (err: any) {
@@ -1968,10 +2737,9 @@ function JobModal({ t, lang, equipment, user, close, done }: any) {
             <label>
               {t.runningHours}
               <input
-                type="number"
-                step="0.1"
-                value={form.running_hours}
-                onChange={(e) => change("running_hours", e.target.value)}
+                type="time"
+                value={form.work_time}
+                onChange={(e) => change("work_time", e.target.value)}
               />
             </label>
           </div>
@@ -2073,14 +2841,15 @@ function JobModalAll({
   const firstCategory = schedules[0]?.equipment_key || "compressor";
   const firstVariation =
     equipment.find((e: any) => e.category === firstCategory)?.id ||
-    inventory.find((i: any) => i.category.toLowerCase() === firstCategory)?.id ||
+    inventory.find((i: any) => i.category.toLowerCase() === firstCategory)
+      ?.id ||
     "";
   const [form, setForm] = useState({
     equipment_category: firstCategory,
     variation_id: firstVariation,
     job_type: "routine_service",
     service_date: new Date().toISOString().slice(0, 10),
-    running_hours: "",
+    work_time: new Date().toTimeString().slice(0, 5),
     fault: "",
     work_done: "",
     remarks: "",
@@ -2140,23 +2909,21 @@ function JobModalAll({
         const blob = await (await fetch(signature)).blob();
         sigPath = await upload(blob, "signature.png");
       }
-      const { error } = await supabase
-        .from("service_jobs")
-        .insert({
-          equipment_category: form.equipment_category,
-          equipment_id: serviceCategory ? form.variation_id : null,
-          inventory_item_id: serviceCategory ? null : form.variation_id,
-          job_type: form.job_type,
-          service_date: form.service_date,
-          running_hours: form.running_hours ? Number(form.running_hours) : null,
-          fault: form.fault || null,
-          work_done: form.work_done,
-          remarks: form.remarks || null,
-          photo_paths: photos,
-          signature_path: sigPath,
-          verification_method: method,
-          created_by: user.id,
-        });
+      const { error } = await supabase.from("service_jobs").insert({
+        equipment_category: form.equipment_category,
+        equipment_id: serviceCategory ? form.variation_id : null,
+        inventory_item_id: serviceCategory ? null : form.variation_id,
+        job_type: form.job_type,
+        service_date: form.service_date,
+        work_time: form.work_time || null,
+        fault: form.fault || null,
+        work_done: form.work_done,
+        remarks: form.remarks || null,
+        photo_paths: photos,
+        signature_path: sigPath,
+        verification_method: method,
+        created_by: user.id,
+      });
       if (error) throw error;
       done();
     } catch (err: any) {
@@ -2238,10 +3005,9 @@ function JobModalAll({
             <label>
               {t.runningHours}
               <input
-                type="number"
-                step="0.1"
-                value={form.running_hours}
-                onChange={(e) => change("running_hours", e.target.value)}
+                type="time"
+                value={form.work_time}
+                onChange={(e) => change("work_time", e.target.value)}
               />
             </label>
           </div>
