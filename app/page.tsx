@@ -499,10 +499,12 @@ export default function App() {
             >
               <Languages /> {lang === "bm" ? "EN" : "BM"}
             </button>
-            <button className="primary" onClick={() => setShowJob(true)}>
-              <Plus />
-              {t.newJob}
-            </button>
+            {profile.role !== "auditor" && (
+              <button className="primary" onClick={() => setShowJob(true)}>
+                <Plus />
+                {t.newJob}
+              </button>
+            )}
           </div>
         </header>
         {notice && (
@@ -547,7 +549,9 @@ export default function App() {
         {tab === "users" && profile.role === "admin" && (
           <UsersView
             t={t}
+            lang={lang}
             users={profiles}
+            currentUser={profile}
             refresh={refresh}
             setNotice={setNotice}
           />
@@ -1526,7 +1530,8 @@ function JobsView({ t, lang, jobs }: any) {
   );
 }
 
-function UsersView({ t, users, refresh, setNotice }: any) {
+function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
+  const [showAdd, setShowAdd] = useState(false);
   async function status(u: any, s: string) {
     const { error } = await supabase
       .from("profiles")
@@ -1536,8 +1541,30 @@ function UsersView({ t, users, refresh, setNotice }: any) {
     setNotice("User updated.");
     refresh();
   }
+  async function changeRole(u: any, role: string) {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ role, updated_at: new Date().toISOString() })
+      .eq("id", u.id);
+    if (error) return alert(error.message);
+    setNotice(lang === "bm" ? "Akses pengguna dikemas kini." : "User access updated.");
+    refresh();
+  }
   return (
     <section>
+      <div className="toolbar">
+        <div>
+          <strong>{lang === "bm" ? "PENGURUSAN PENGGUNA" : "USER MANAGEMENT"}</strong>
+          <small className="block-muted">
+            {lang === "bm"
+              ? "Admin: penuh · Staff: kerja & pemantauan · Auditor: baca sahaja"
+              : "Admin: full · Staff: jobs & monitoring · Auditor: read only"}
+          </small>
+        </div>
+        <button className="primary" onClick={() => setShowAdd(true)}>
+          <Plus /> {lang === "bm" ? "Tambah Pengguna" : "Add User"}
+        </button>
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -1554,7 +1581,18 @@ function UsersView({ t, users, refresh, setNotice }: any) {
                 <td>
                   <strong>{u.full_name}</strong>
                 </td>
-                <td>{u.role}</td>
+                <td>
+                  <select
+                    className="role-select"
+                    value={u.role}
+                    disabled={u.id === currentUser.id}
+                    onChange={(e) => changeRole(u, e.target.value)}
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="staff">Staff</option>
+                    <option value="auditor">Auditor</option>
+                  </select>
+                </td>
                 <td>
                   <span
                     className={
@@ -1588,7 +1626,61 @@ function UsersView({ t, users, refresh, setNotice }: any) {
           </tbody>
         </table>
       </div>
+      {showAdd && (
+        <AddUserModal
+          t={t}
+          lang={lang}
+          close={() => setShowAdd(false)}
+          done={() => {
+            setShowAdd(false);
+            refresh();
+            setNotice(lang === "bm" ? "Pengguna baharu berjaya ditambah." : "New user added.");
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function AddUserModal({ t, lang, close, done }: any) {
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ full_name: "", email: "", password: "", role: "staff" });
+  const set = (key: string, value: string) => setForm({ ...form, [key]: value });
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-create-user", { body: form });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      done();
+    } catch (error: any) {
+      alert(error.message || "Unable to create user");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <div className="modal user-modal">
+        <div className="modal-head">
+          <div><span>ADMIN</span><h2>{lang === "bm" ? "Tambah Pengguna" : "Add User"}</h2></div>
+          <button className="icon-btn" onClick={close}><X /></button>
+        </div>
+        <form onSubmit={submit}>
+          <label>{t.fullName}<input required value={form.full_name} onChange={(e) => set("full_name", e.target.value)} /></label>
+          <label>{t.email}<input type="email" required value={form.email} onChange={(e) => set("email", e.target.value)} /></label>
+          <label>{lang === "bm" ? "Kata Laluan Sementara" : "Temporary Password"}<input type="password" minLength={8} required value={form.password} onChange={(e) => set("password", e.target.value)} /></label>
+          <label>{lang === "bm" ? "Tahap Akses" : "Access Role"}<select value={form.role} onChange={(e) => set("role", e.target.value)}><option value="admin">Admin</option><option value="staff">Staff</option><option value="auditor">Auditor</option></select></label>
+          <div className="access-note">
+            {form.role === "admin" && (lang === "bm" ? "Akses penuh termasuk pengguna, peralatan dan inventori." : "Full access including users, equipment and inventory.")}
+            {form.role === "staff" && (lang === "bm" ? "Boleh mencipta kerja baharu dan memantau status peralatan." : "Can create jobs and monitor equipment status.")}
+            {form.role === "auditor" && (lang === "bm" ? "Baca sahaja: semua tugasan, kemajuan dan status peralatan." : "Read only: all jobs, progress and equipment status.")}
+          </div>
+          <div className="modal-actions"><button type="button" className="secondary" onClick={close}>{t.cancel}</button><button className="primary" disabled={busy}>{busy ? t.loading : t.save}</button></div>
+        </form>
+      </div>
+    </div>
   );
 }
 
