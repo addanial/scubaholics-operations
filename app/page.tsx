@@ -133,6 +133,7 @@ type Rental = {
   deposit_amount: number;
   payment_status: string;
   notes: string | null;
+  rental_photo_paths: string[];
   return_time: string | null;
   return_notes: string | null;
   return_photo_paths: string[];
@@ -2072,10 +2073,10 @@ function jobEquipmentName(job: Job, lang: Lang) {
   return job.equipment_category || job.job_type || "-";
 }
 
-async function jobMediaDataUrl(path: string) {
+async function storageMediaDataUrl(bucket: string, path: string) {
   try {
     const { data: blob, error } = await supabase.storage
-      .from("job-media")
+      .from(bucket)
       .download(path);
     if (error || !blob) return null;
     const bitmap = await createImageBitmap(blob);
@@ -2092,6 +2093,11 @@ async function jobMediaDataUrl(path: string) {
     return null;
   }
 }
+
+const jobMediaDataUrl = (path: string) =>
+  storageMediaDataUrl("job-media", path);
+const rentalMediaDataUrl = (path: string) =>
+  storageMediaDataUrl("rental-media", path);
 
 async function printWorkRecords(records: Job[], lang: Lang) {
   if (!records.length) return;
@@ -2545,7 +2551,7 @@ async function printRentalRecords(records: Rental[], lang: Lang) {
     y += lines.length * 4.4 + 1;
   };
   header();
-  records.forEach((rental, index) => {
+  for (const [index, rental] of records.entries()) {
     space(58);
     doc.setFillColor(237, 245, 248);
     doc.roundedRect(margin, y - 4, width - margin * 2, 8, 1.5, 1.5, "F");
@@ -2606,8 +2612,52 @@ async function printRentalRecords(records: Rental[], lang: Lang) {
       lang === "bm" ? "Catatan pemulangan" : "Return notes",
       rental.return_notes || "-",
     );
+    if (rental.rental_photo_paths?.length) {
+      row(
+        lang === "bm" ? "Gambar barangan keluar" : "Outgoing equipment photos",
+        `${rental.rental_photo_paths.length}`,
+      );
+      for (const path of rental.rental_photo_paths) {
+        const image = await rentalMediaDataUrl(path);
+        if (!image) continue;
+        space(54);
+        doc.addImage(image, "JPEG", margin + 2, y, 72, 48, undefined, "FAST");
+        y += 52;
+      }
+    }
+    if (rental.return_photo_paths?.length) {
+      row(
+        lang === "bm" ? "Gambar pemulangan" : "Return photos",
+        `${rental.return_photo_paths.length}`,
+      );
+      for (const path of rental.return_photo_paths) {
+        const image = await rentalMediaDataUrl(path);
+        if (!image) continue;
+        space(54);
+        doc.addImage(image, "JPEG", margin + 2, y, 72, 48, undefined, "FAST");
+        y += 52;
+      }
+    }
+    if (rental.return_signature_path) {
+      const signature = await rentalMediaDataUrl(rental.return_signature_path);
+      if (signature) {
+        row(lang === "bm" ? "Tandatangan pemulangan" : "Return signature", " ");
+        space(32);
+        doc.addImage(
+          signature,
+          "JPEG",
+          margin + 2,
+          y,
+          65,
+          25,
+          undefined,
+          "FAST",
+        );
+        y += 29;
+      }
+    }
     y += 5;
-  });
+  }
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page += 1) {
     doc.setPage(page);
@@ -2849,6 +2899,54 @@ function RentalDetailsModal({
   returned,
   remove,
 }: any) {
+  const [rentalPhotoUrls, setRentalPhotoUrls] = useState<string[]>([]);
+  const [returnPhotoUrls, setReturnPhotoUrls] = useState<string[]>([]);
+  const [signatureUrl, setSignatureUrl] = useState("");
+  useEffect(() => {
+    let active = true;
+    const objectUrls: string[] = [];
+    async function loadMedia() {
+      if (rental.rental_photo_paths?.length) {
+        const results = await Promise.all(
+          rental.rental_photo_paths.map((path: string) =>
+            supabase.storage.from("rental-media").download(path),
+          ),
+        );
+        const urls = results
+          .filter((result) => !result.error && result.data)
+          .map((result) => URL.createObjectURL(result.data!));
+        objectUrls.push(...urls);
+        if (active) setRentalPhotoUrls(urls);
+      }
+      if (rental.return_photo_paths?.length) {
+        const results = await Promise.all(
+          rental.return_photo_paths.map((path: string) =>
+            supabase.storage.from("rental-media").download(path),
+          ),
+        );
+        const urls = results
+          .filter((result) => !result.error && result.data)
+          .map((result) => URL.createObjectURL(result.data!));
+        objectUrls.push(...urls);
+        if (active) setReturnPhotoUrls(urls);
+      }
+      if (rental.return_signature_path) {
+        const { data } = await supabase.storage
+          .from("rental-media")
+          .download(rental.return_signature_path);
+        if (data) {
+          const url = URL.createObjectURL(data);
+          objectUrls.push(url);
+          if (active) setSignatureUrl(url);
+        }
+      }
+    }
+    loadMedia();
+    return () => {
+      active = false;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [rental]);
   return (
     <div className="modal-backdrop">
       <div className="modal rental-detail-modal">
@@ -2957,6 +3055,69 @@ function RentalDetailsModal({
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="job-media-section">
+          <h3>
+            {lang === "bm"
+              ? "Gambar Barangan Keluar"
+              : "Outgoing Equipment Photos"}
+          </h3>
+          {rentalPhotoUrls.length ? (
+            <div className="job-media-gallery">
+              {rentalPhotoUrls.map((url, index) => (
+                <a href={url} target="_blank" rel="noreferrer" key={url}>
+                  <img
+                    src={url}
+                    alt={`${lang === "bm" ? "Gambar barangan keluar" : "Outgoing equipment photo"} ${index + 1}`}
+                  />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <small className="block-muted">
+              {lang === "bm"
+                ? "Tiada gambar barangan keluar."
+                : "No outgoing equipment photos."}
+            </small>
+          )}
+        </div>
+        <div className="job-media-section">
+          <h3>{lang === "bm" ? "Gambar Pemulangan" : "Return Photos"}</h3>
+          {returnPhotoUrls.length ? (
+            <div className="job-media-gallery">
+              {returnPhotoUrls.map((url, index) => (
+                <a href={url} target="_blank" rel="noreferrer" key={url}>
+                  <img
+                    src={url}
+                    alt={`${lang === "bm" ? "Gambar pemulangan" : "Return photo"} ${index + 1}`}
+                  />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <small className="block-muted">
+              {rental.return_photo_paths?.length
+                ? lang === "bm"
+                  ? "Gambar sedang dimuatkan..."
+                  : "Loading photos..."
+                : lang === "bm"
+                  ? "Tiada gambar pemulangan."
+                  : "No return photos."}
+            </small>
+          )}
+          {signatureUrl && (
+            <div className="job-signature-preview">
+              <strong>
+                {lang === "bm" ? "Tandatangan Pemulangan" : "Return Signature"}
+              </strong>
+              <img
+                src={signatureUrl}
+                alt={
+                  lang === "bm" ? "Tandatangan pemulangan" : "Return signature"
+                }
+              />
+            </div>
+          )}
         </div>
         <div className="modal-actions rental-detail-actions">
           {profile.role === "admin" && (
@@ -3273,10 +3434,11 @@ function RentalReturnModal({ t, lang, rental, user, close, done }: any) {
   );
 }
 
-function RentalModal({ t, lang, inventory, close, done }: any) {
+function RentalModal({ t, lang, inventory, user, close, done }: any) {
   const rentable = inventory as Inventory[];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
   const [form, setForm] = useState({
     customer_name: "",
     customer_phone: "",
@@ -3303,20 +3465,45 @@ function RentalModal({ t, lang, inventory, close, done }: any) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const { error } = await supabase.rpc("create_rental", {
-      p_customer_name: form.customer_name,
-      p_customer_phone: form.customer_phone,
-      p_rental_date: form.rental_date,
-      p_expected_return_date: form.expected_return_date,
-      p_total_amount: Number(form.total_amount || 0),
-      p_deposit_amount: Number(form.deposit_amount || 0),
-      p_payment_status: form.payment_status,
-      p_notes: form.notes,
-      p_items: items,
-    });
-    setBusy(false);
-    if (error) return alert(error.message);
-    done();
+    try {
+      const { data: rentalId, error } = await supabase.rpc("create_rental", {
+        p_customer_name: form.customer_name,
+        p_customer_phone: form.customer_phone,
+        p_rental_date: form.rental_date,
+        p_expected_return_date: form.expected_return_date,
+        p_total_amount: Number(form.total_amount || 0),
+        p_deposit_amount: Number(form.deposit_amount || 0),
+        p_payment_status: form.payment_status,
+        p_notes: form.notes,
+        p_items: items,
+      });
+      if (error) throw error;
+      const paths: string[] = [];
+      for (const file of files) {
+        const photo = await optimizePhoto(file);
+        const path = `${user.id}/${rentalId}/outgoing/${Date.now()}-${photo.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+        const upload = await supabase.storage
+          .from("rental-media")
+          .upload(path, photo.blob);
+        if (upload.error) throw upload.error;
+        paths.push(path);
+      }
+      if (paths.length) {
+        const update = await supabase
+          .from("rentals")
+          .update({
+            rental_photo_paths: paths,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", rentalId);
+        if (update.error) throw update.error;
+      }
+      done();
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <div className="modal-backdrop">
@@ -3480,6 +3667,14 @@ function RentalModal({ t, lang, inventory, close, done }: any) {
               onChange={(e) => set("notes", e.target.value)}
             />
           </label>
+          <div>
+            <label>
+              {lang === "bm"
+                ? "Gambar Barangan Keluar"
+                : "Outgoing Equipment Photos"}
+            </label>
+            <PhotoPicker files={files} setFiles={setFiles} lang={lang} />
+          </div>
           <div className="modal-actions">
             <button type="button" className="secondary" onClick={close}>
               {t.cancel}
