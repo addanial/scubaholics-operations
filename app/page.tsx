@@ -377,6 +377,118 @@ function SignaturePad({
   );
 }
 
+async function optimizePhoto(file: File) {
+  const supported = ["image/jpeg", "image/png", "image/webp"];
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1920 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas
+      .getContext("2d")!
+      .drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (value) =>
+          value ? resolve(value) : reject(new Error("Image conversion failed")),
+        "image/jpeg",
+        0.82,
+      ),
+    );
+    return { blob, name: file.name.replace(/\.[^.]+$/, "") + ".jpg" };
+  } catch {
+    if (supported.includes(file.type) && file.size <= 10 * 1024 * 1024)
+      return { blob: file as Blob, name: file.name };
+    throw new Error(
+      "Format gambar tidak disokong. Gunakan JPG, PNG atau WEBP di bawah 10MB.",
+    );
+  }
+}
+
+function PhotoPicker({
+  files,
+  setFiles,
+  lang,
+}: {
+  files: File[];
+  setFiles: (files: File[]) => void;
+  lang: Lang;
+}) {
+  const [previews, setPreviews] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = files.map((file) => URL.createObjectURL(file));
+    setPreviews(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [files]);
+  const add = (selected: FileList | null) => {
+    const incoming = Array.from(selected || []).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+    const combined = [...files, ...incoming].slice(0, 10);
+    setFiles(combined);
+  };
+  return (
+    <div className="photo-picker">
+      <div className="photo-actions">
+        <label className="secondary photo-button">
+          {lang === "bm" ? "Ambil Gambar" : "Take Photo"}
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => {
+              add(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        <label className="secondary photo-button">
+          {lang === "bm"
+            ? "Pilih Galeri / Komputer"
+            : "Choose Gallery / Computer"}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            onChange={(e) => {
+              add(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+      <small className="photo-help">
+        {files.length
+          ? `${files.length} ${lang === "bm" ? "gambar dipilih" : "photo(s) selected"}`
+          : lang === "bm"
+            ? "Belum ada gambar dipilih · maksimum 10 gambar"
+            : "No photos selected · maximum 10 photos"}
+      </small>
+      {!!files.length && (
+        <div className="photo-previews">
+          {files.map((file, index) => (
+            <div
+              className="photo-preview"
+              key={`${file.name}-${file.lastModified}-${index}`}
+            >
+              <img src={previews[index]} alt={file.name} />
+              <button
+                type="button"
+                onClick={() => setFiles(files.filter((_, i) => i !== index))}
+              >
+                ×
+              </button>
+              <small>{file.name}</small>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [lang, setLang] = useState<Lang>("bm");
   const t = copy[lang];
@@ -3949,7 +4061,10 @@ function JobModal({ t, lang, equipment, user, close, done }: any) {
             : "Please draw a signature.",
         );
       const photos = [];
-      for (const f of files) photos.push(await upload(f, f.name));
+      for (const f of files) {
+        const photo = await optimizePhoto(f);
+        photos.push(await upload(photo.blob, photo.name));
+      }
       let sigPath = null;
       if (signature) {
         const blob = await (await fetch(signature)).blob();
@@ -4064,16 +4179,10 @@ function JobModal({ t, lang, equipment, user, close, done }: any) {
               onChange={(e) => change("remarks", e.target.value)}
             />
           </label>
-          <label>
-            {t.photos}
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              capture="environment"
-              onChange={(e) => setFiles(Array.from(e.target.files || []))}
-            />
-          </label>
+          <div>
+            <label>{t.photos}</label>
+            <PhotoPicker files={files} setFiles={setFiles} lang={lang} />
+          </div>
           <div className="segmented">
             <button
               type="button"
@@ -4203,7 +4312,10 @@ function JobModalAll({
             : "Please draw a signature.",
         );
       const photos = [];
-      for (const f of files) photos.push(await upload(f, f.name));
+      for (const f of files) {
+        const photo = await optimizePhoto(f);
+        photos.push(await upload(photo.blob, photo.name));
+      }
       let sigPath = null;
       if (signature) {
         const blob = await (await fetch(signature)).blob();
@@ -4344,16 +4456,10 @@ function JobModalAll({
               onChange={(e) => change("remarks", e.target.value)}
             />
           </label>
-          <label>
-            {t.photos}
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              capture="environment"
-              onChange={(e) => setFiles(Array.from(e.target.files || []))}
-            />
-          </label>
+          <div>
+            <label>{t.photos}</label>
+            <PhotoPicker files={files} setFiles={setFiles} lang={lang} />
+          </div>
           <div className="segmented">
             <button
               type="button"
