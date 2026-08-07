@@ -2276,6 +2276,7 @@ function RentalsView({
 }: any) {
   const [q, setQ] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [detail, setDetail] = useState<Rental | null>(null);
   const rows = (rentals as Rental[]).filter((r) =>
     `${r.rental_no} ${r.customer_name} ${r.customer_phone || ""}`
       .toLowerCase()
@@ -2407,6 +2408,9 @@ function RentalsView({
                     >
                       <FileDown size={14} /> PDF
                     </button>
+                    <button className="text-btn" onClick={() => setDetail(r)}>
+                      {lang === "bm" ? "Butiran" : "Details"}
+                    </button>
                     {profile.role !== "auditor" && r.status === "out" && (
                       <button
                         className="text-btn"
@@ -2420,7 +2424,7 @@ function RentalsView({
                         className="text-btn danger-text-small"
                         onClick={() => archiveRental(r)}
                       >
-                        {lang === "bm" ? "Arkib" : "Archive"}
+                        {lang === "bm" ? "Padam" : "Delete"}
                       </button>
                     )}
                   </div>
@@ -2449,7 +2453,141 @@ function RentalsView({
           }}
         />
       )}
+      {detail && (
+        <RentalDetailsModal
+          t={t}
+          lang={lang}
+          rental={detail}
+          profile={profile}
+          close={() => setDetail(null)}
+          returned={() => {
+            setDetail(null);
+            markReturned(detail);
+          }}
+          remove={() => {
+            setDetail(null);
+            archiveRental(detail);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function RentalDetailsModal({
+  t,
+  lang,
+  rental,
+  profile,
+  close,
+  returned,
+  remove,
+}: any) {
+  return (
+    <div className="modal-backdrop">
+      <div className="modal rental-detail-modal">
+        <div className="modal-head">
+          <div>
+            <span>SCUBAHOLICS · {rental.rental_no}</span>
+            <h2>{lang === "bm" ? "Butiran Penyewaan" : "Rental Details"}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <div className="rental-detail-summary">
+          <div>
+            <small>{lang === "bm" ? "Pelanggan" : "Customer"}</small>
+            <strong>{rental.customer_name}</strong>
+            <span>{rental.customer_phone || "-"}</span>
+          </div>
+          <div>
+            <small>Status</small>
+            <strong>{rental.status.toUpperCase()}</strong>
+            <span>{rental.payment_status.toUpperCase()}</span>
+          </div>
+          <div>
+            <small>{lang === "bm" ? "Jumlah Sewa" : "Rental Total"}</small>
+            <strong>RM {Number(rental.total_amount).toFixed(2)}</strong>
+            <span>Deposit: RM {Number(rental.deposit_amount).toFixed(2)}</span>
+          </div>
+        </div>
+        <div className="detail-list">
+          <p>
+            <strong>{lang === "bm" ? "Tarikh Keluar" : "Rental Date"}:</strong>{" "}
+            {fmtDate(rental.rental_date, lang)}
+          </p>
+          <p>
+            <strong>
+              {lang === "bm" ? "Jangka Pulang" : "Expected Return"}:
+            </strong>{" "}
+            {fmtDate(rental.expected_return_date, lang)}
+          </p>
+          <p>
+            <strong>
+              {lang === "bm" ? "Tarikh Dipulangkan" : "Actual Return"}:
+            </strong>{" "}
+            {rental.actual_return_date
+              ? fmtDate(rental.actual_return_date, lang)
+              : "-"}
+          </p>
+          <p>
+            <strong>{t.remarks}:</strong> {rental.notes || "-"}
+          </p>
+        </div>
+        <div className="table-wrap rental-detail-items">
+          <table>
+            <thead>
+              <tr>
+                <th>{lang === "bm" ? "Peralatan" : "Equipment"}</th>
+                <th>{lang === "bm" ? "Variasi" : "Variant"}</th>
+                <th>{t.quantity}</th>
+                <th>{lang === "bm" ? "Keadaan Keluar" : "Condition Out"}</th>
+                <th>{lang === "bm" ? "Keadaan Pulang" : "Condition In"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(rental.rental_items || []).map((item: RentalItem) => (
+                <tr key={item.id}>
+                  <td>
+                    {item.inventory_items
+                      ? lang === "bm"
+                        ? item.inventory_items.name_bm
+                        : item.inventory_items.name_en
+                      : "Item"}
+                  </td>
+                  <td>{item.inventory_items?.variant || "-"}</td>
+                  <td>{item.quantity}</td>
+                  <td>{item.condition_out}</td>
+                  <td>{item.condition_in || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="modal-actions rental-detail-actions">
+          {profile.role === "admin" && (
+            <button className="delete-btn" onClick={remove}>
+              {lang === "bm" ? "Padam Rekod" : "Delete Record"}
+            </button>
+          )}
+          {profile.role !== "auditor" && rental.status === "out" && (
+            <button className="secondary" onClick={returned}>
+              {lang === "bm" ? "Rekod Pemulangan" : "Record Return"}
+            </button>
+          )}
+          <button
+            className="secondary"
+            onClick={() => printRentalRecords([rental], lang)}
+          >
+            <FileDown size={16} /> PDF
+          </button>
+          <button className="primary" onClick={close}>
+            {lang === "bm" ? "Tutup" : "Close"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
