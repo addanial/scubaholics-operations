@@ -4006,25 +4006,36 @@ function ProfileView({ t, lang, profile, refresh, setNotice }: any) {
   }
   async function uploadAvatar(file?: File) {
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024)
+    if (file.size > 15 * 1024 * 1024)
       return alert(
         lang === "bm"
-          ? "Gambar mesti kurang daripada 5MB."
-          : "Image must be under 5MB.",
+          ? "Gambar asal mesti kurang daripada 15MB."
+          : "Original image must be under 15MB.",
       );
     setBusy(true);
     try {
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${profile.id}/avatar.${ext}`;
+      const optimized = await optimizePhoto(file);
+      const outputType = optimized.blob.type || "image/jpeg";
+      const outputExt =
+        outputType === "image/png"
+          ? "png"
+          : outputType === "image/webp"
+            ? "webp"
+            : "jpg";
+      const path = `${profile.id}/avatar-${Date.now()}.${outputExt}`;
       const { error: uploadError } = await supabase.storage
         .from("profile-images")
-        .upload(path, file, { upsert: true, contentType: file.type });
+        .upload(path, optimized.blob, {
+          contentType: outputType,
+          cacheControl: "3600",
+        });
       if (uploadError) throw uploadError;
-      const { error } = await supabase
-        .from("profiles")
-        .update({ avatar_path: path, updated_at: new Date().toISOString() })
-        .eq("id", profile.id);
+      const { error } = await supabase.rpc("set_my_avatar", { p_path: path });
       if (error) throw error;
+      if (profile.avatar_path && profile.avatar_path !== path)
+        await supabase.storage
+          .from("profile-images")
+          .remove([profile.avatar_path]);
       setNotice(
         lang === "bm"
           ? "Gambar profil dikemas kini."
