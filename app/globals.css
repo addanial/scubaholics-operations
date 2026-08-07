@@ -690,10 +690,9 @@ code {
 }
 .return-line {
   display: grid;
-  grid-template-columns: minmax(170px, 1.4fr) 105px 155px minmax(
-      150px,
-      1fr
-    ) 105px;
+  grid-template-columns:
+    minmax(170px, 1.4fr) 105px 155px minmax(150px, 1fr)
+    105px;
   gap: 9px;
   align-items: end;
   padding: 12px;
@@ -809,6 +808,67 @@ code {
   border-radius: 10px;
   background: #fafcfd;
   touch-action: none;
+}
+.photo-picker {
+  display: grid;
+  gap: 10px;
+  margin-top: 7px;
+}
+.photo-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.photo-button {
+  cursor: pointer;
+  font-size: 13px;
+}
+.photo-button input {
+  display: none;
+}
+.photo-help {
+  color: var(--muted);
+}
+.photo-previews {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 9px;
+}
+.photo-preview {
+  position: relative;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fbfc;
+}
+.photo-preview img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 7px;
+}
+.photo-preview button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--red);
+  color: white;
+  font-size: 18px;
+  line-height: 1;
+}
+.photo-preview small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 5px;
+  color: var(--muted);
 }
 .segmented {
   display: grid;
