@@ -90,6 +90,7 @@ type Job = {
   job_type: string;
   service_date: string;
   work_time: string | null;
+  work_end_time: string | null;
   work_done: string;
   fault: string | null;
   remarks: string | null;
@@ -168,7 +169,8 @@ const copy = {
     remarks: "Catatan",
     jobType: "Jenis Kerja",
     date: "Tarikh",
-    runningHours: "Masa Kerja Dilaksanakan",
+    runningHours: "Masa Mula Kerja",
+    workEndTime: "Masa Habis Kerja",
     verification: "Pengesahan",
     signature: "Tandatangan",
     pin: "PIN",
@@ -234,7 +236,8 @@ const copy = {
     remarks: "Remarks",
     jobType: "Job Type",
     date: "Date",
-    runningHours: "Work Performed Time",
+    runningHours: "Work Start Time",
+    workEndTime: "Work End Time",
     verification: "Verification",
     signature: "Signature",
     pin: "PIN",
@@ -577,6 +580,10 @@ export default function App() {
             jobs={jobs}
             due={due}
             totalQty={totalQty}
+            rentals={rentals}
+            profile={profile}
+            refresh={refresh}
+            setNotice={setNotice}
           />
         )}
         {tab === "equipment" && (
@@ -782,7 +789,12 @@ function Dashboard({
   jobs,
   due,
   totalQty,
+  rentals,
+  profile,
+  refresh,
+  setNotice,
 }: any) {
+  const [detail, setDetail] = useState<any>(null);
   const overdue = due.filter(
     (e: any) => Math.min(e.routineDays, e.overallDays) < 0,
   ).length;
@@ -795,13 +807,41 @@ function Dashboard({
     ...inventory.map((i: any) => i.category.toLowerCase()),
   ]).size;
   const totalPhysicalUnits = equipment.length + totalQty;
+  const activeRentals = rentals.filter((r: Rental) => r.status === "out");
+  const overdueRentals = activeRentals.filter(
+    (r: Rental) => new Date(r.expected_return_date) < new Date(),
+  ).length;
   const cards = [
     [t.totalEquipment, equipmentTypes, <Wrench key="w" />],
     [t.inventoryQty, totalPhysicalUnits, <Box key="b" />],
     [t.inventoryLines, inventory.length, <PackagePlus key="p" />],
     [t.dueSoon, soon, <Activity key="a" />],
     [t.overdue, overdue, <ShieldCheck key="s" />],
+    [
+      lang === "bm" ? "Sedang Disewa" : "Currently Rented",
+      activeRentals.length,
+      <CalendarRange key="r" />,
+    ],
   ];
+  async function deleteJob(job: Job) {
+    if (
+      !confirm(
+        lang === "bm"
+          ? `Padam ${job.job_no}? Rekod ini juga akan hilang daripada Rekod Kerja.`
+          : `Delete ${job.job_no}? It will also be removed from Job Records.`,
+      )
+    )
+      return;
+    const { error } = await supabase
+      .from("service_jobs")
+      .delete()
+      .eq("id", job.id);
+    if (error) return alert(error.message);
+    setNotice(
+      lang === "bm" ? "Aktiviti berjaya dipadam." : "Activity deleted.",
+    );
+    refresh();
+  }
   return (
     <section>
       <div className="welcome">
@@ -846,17 +886,22 @@ function Dashboard({
                       {fmtDate(e.overallDue, lang)}
                     </small>
                   </div>
-                  <span
-                    className={
-                      days < 0
-                        ? "badge danger"
-                        : days <= 7
-                          ? "badge warn"
-                          : "badge ok"
-                    }
-                  >
-                    {days < 0 ? t.overdue : days <= 7 ? t.dueSoon : t.active}
-                  </span>
+                  <div className="dashboard-row-actions">
+                    <span
+                      className={
+                        days < 0
+                          ? "badge danger"
+                          : days <= 7
+                            ? "badge warn"
+                            : "badge ok"
+                      }
+                    >
+                      {days < 0 ? t.overdue : days <= 7 ? t.dueSoon : t.active}
+                    </span>
+                    <button className="text-btn" onClick={() => setDetail(e)}>
+                      {lang === "bm" ? "Butiran" : "Details"}
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -885,14 +930,176 @@ function Dashboard({
                     {fmtDate(j.service_date, lang)}
                   </small>
                 </div>
-                <span className="badge">{j.verification_method}</span>
+                <div className="dashboard-row-actions">
+                  <span className="badge">{j.verification_method}</span>
+                  {profile.role === "admin" && (
+                    <button
+                      className="text-btn danger-text-small"
+                      onClick={() => deleteJob(j)}
+                    >
+                      {lang === "bm" ? "Padam" : "Delete"}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
             {!jobs.length && <div className="empty">{t.noData}</div>}
           </div>
         </div>
       </div>
+      <div className="panel dashboard-rentals">
+        <div className="panel-title">
+          <h3>{lang === "bm" ? "Status Penyewaan" : "Rental Status"}</h3>
+          <small className="block-muted">
+            {activeRentals.length}{" "}
+            {lang === "bm" ? "sedang disewa" : "currently out"} ·{" "}
+            {overdueRentals} {lang === "bm" ? "lewat dipulang" : "overdue"}
+          </small>
+        </div>
+        <div className="list">
+          {rentals.slice(0, 5).map((r: Rental) => (
+            <div className="list-row" key={r.id}>
+              <div>
+                <strong>
+                  {r.rental_no} · {r.customer_name}
+                </strong>
+                <small>
+                  {fmtDate(r.rental_date, lang)} →{" "}
+                  {fmtDate(r.expected_return_date, lang)}
+                </small>
+              </div>
+              <span
+                className={`badge ${r.status === "returned" ? "ok" : new Date(r.expected_return_date) < new Date() ? "danger" : "warn"}`}
+              >
+                {r.status}
+              </span>
+            </div>
+          ))}
+          {!rentals.length && <div className="empty">{t.noData}</div>}
+        </div>
+      </div>
+      {detail && (
+        <EquipmentSummaryModal
+          t={t}
+          lang={lang}
+          schedule={detail}
+          equipment={equipment}
+          inventory={inventory}
+          rentals={rentals}
+          close={() => setDetail(null)}
+        />
+      )}
     </section>
+  );
+}
+
+function EquipmentSummaryModal({
+  t,
+  lang,
+  schedule,
+  equipment,
+  inventory,
+  rentals,
+  close,
+}: any) {
+  const category = schedule.equipment_key.toLowerCase();
+  const machines = equipment.filter(
+    (e: Equipment) => e.category.toLowerCase() === category,
+  );
+  const items = inventory.filter(
+    (i: Inventory) => i.category.toLowerCase() === category,
+  );
+  const owned =
+    machines.length +
+    items.reduce((sum: number, item: Inventory) => sum + item.quantity, 0);
+  const rented = rentals
+    .filter((r: Rental) => r.status === "out")
+    .flatMap((r: Rental) => r.rental_items || [])
+    .filter(
+      (line: RentalItem) =>
+        line.inventory_items?.category.toLowerCase() === category,
+    )
+    .reduce((sum: number, line: RentalItem) => sum + line.quantity, 0);
+  const conditions = [
+    ...machines.map((e: Equipment) => e.item_condition),
+    ...items.map((i: Inventory) => i.item_condition),
+  ];
+  return (
+    <div className="modal-backdrop">
+      <div className="modal user-modal">
+        <div className="modal-head">
+          <div>
+            <span>SCUBAHOLICS</span>
+            <h2>{lang === "bm" ? schedule.name_bm : schedule.name_en}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <div className="summary-grid">
+          <div>
+            <small>{lang === "bm" ? "Jumlah Unit" : "Total Units"}</small>
+            <strong>{owned}</strong>
+          </div>
+          <div>
+            <small>
+              {lang === "bm" ? "Sedang Disewa" : "Currently Rented"}
+            </small>
+            <strong>{rented}</strong>
+          </div>
+          <div>
+            <small>{lang === "bm" ? "Tersedia" : "Available"}</small>
+            <strong>{Math.max(0, owned - rented)}</strong>
+          </div>
+          <div>
+            <small>
+              {lang === "bm" ? "Variasi / Unit" : "Variants / Units"}
+            </small>
+            <strong>{machines.length + items.length}</strong>
+          </div>
+        </div>
+        <div className="detail-list">
+          <p>
+            <strong>
+              {lang === "bm"
+                ? "Servis rutin seterusnya"
+                : "Next routine service"}
+              :
+            </strong>{" "}
+            {fmtDate(schedule.routineDue, lang)}
+          </p>
+          <p>
+            <strong>
+              {lang === "bm"
+                ? "Servis menyeluruh seterusnya"
+                : "Next overall service"}
+              :
+            </strong>{" "}
+            {fmtDate(schedule.overallDue, lang)}
+          </p>
+          <p>
+            <strong>{t.condition}:</strong>{" "}
+            {[...new Set(conditions)].join(", ") || "-"}
+          </p>
+          <p>
+            <strong>{lang === "bm" ? "Lokasi" : "Location"}:</strong>{" "}
+            {[
+              ...new Set(
+                [
+                  ...machines.map((e: Equipment) => e.location),
+                  ...items.map((i: Inventory) => i.location),
+                ].filter(Boolean),
+              ),
+            ].join(", ") || "-"}
+          </p>
+        </div>
+        <div className="modal-actions">
+          <button className="primary" onClick={close}>
+            {lang === "bm" ? "Tutup" : "Close"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1645,9 +1852,18 @@ async function printWorkRecords(records: Job[], lang: Lang) {
       fmtDate(job.service_date, lang),
     );
     field(
-      lang === "bm" ? "Masa kerja dilaksanakan" : "Work performed time",
+      lang === "bm" ? "Masa mula kerja" : "Work start time",
       job.work_time
         ? new Date(`2000-01-01T${job.work_time}`).toLocaleTimeString(
+            lang === "bm" ? "ms-MY" : "en-US",
+            { hour: "numeric", minute: "2-digit", hour12: true },
+          )
+        : null,
+    );
+    field(
+      lang === "bm" ? "Masa habis kerja" : "Work end time",
+      job.work_end_time
+        ? new Date(`2000-01-01T${job.work_end_time}`).toLocaleTimeString(
             lang === "bm" ? "ms-MY" : "en-US",
             { hour: "numeric", minute: "2-digit", hour12: true },
           )
@@ -2244,6 +2460,8 @@ function RentalModal({ t, lang, inventory, close, done }: any) {
 
 function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
   const [showAdd, setShowAdd] = useState(false);
+  const [userDetails, setUserDetails] = useState<any>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   async function status(u: any, s: string) {
     const { error } = await supabase
       .from("profiles")
@@ -2263,6 +2481,18 @@ function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
       lang === "bm" ? "Akses pengguna dikemas kini." : "User access updated.",
     );
     refresh();
+  }
+  async function showDetails(u: any) {
+    setLoadingDetails(true);
+    const { data, error } = await supabase.functions.invoke(
+      "admin-user-management",
+      {
+        body: { action: "details", user_id: u.id },
+      },
+    );
+    setLoadingDetails(false);
+    if (error || data?.error) return alert(data?.error || error?.message);
+    setUserDetails(data.user);
   }
   return (
     <section>
@@ -2323,19 +2553,28 @@ function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
                   </span>
                 </td>
                 <td>
-                  {u.role !== "admin" && (
+                  <div className="record-actions">
                     <button
                       className="text-btn"
-                      onClick={() =>
-                        status(
-                          u,
-                          u.status === "active" ? "suspended" : "active",
-                        )
-                      }
+                      disabled={loadingDetails}
+                      onClick={() => showDetails(u)}
                     >
-                      {u.status === "active" ? t.suspend : t.approve}
+                      {lang === "bm" ? "Butiran Pengguna" : "User Details"}
                     </button>
-                  )}
+                    {u.role !== "admin" && (
+                      <button
+                        className="text-btn"
+                        onClick={() =>
+                          status(
+                            u,
+                            u.status === "active" ? "suspended" : "active",
+                          )
+                        }
+                      >
+                        {u.status === "active" ? t.suspend : t.approve}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -2358,7 +2597,147 @@ function UsersView({ t, lang, users, currentUser, refresh, setNotice }: any) {
           }}
         />
       )}
+      {userDetails && (
+        <UserDetailsModal
+          t={t}
+          lang={lang}
+          data={userDetails}
+          currentUser={currentUser}
+          close={() => setUserDetails(null)}
+          done={(message: string) => {
+            setUserDetails(null);
+            refresh();
+            setNotice(message);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function UserDetailsModal({ t, lang, data, currentUser, close, done }: any) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function invoke(action: string, extra: any = {}) {
+    const { data: result, error } = await supabase.functions.invoke(
+      "admin-user-management",
+      {
+        body: { action, user_id: data.id, ...extra },
+      },
+    );
+    if (error || result?.error)
+      throw new Error(result?.error || error?.message);
+  }
+  async function resetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 8)
+      return alert(
+        lang === "bm" ? "Minimum 8 aksara." : "Minimum 8 characters.",
+      );
+    setBusy(true);
+    try {
+      await invoke("reset_password", { password });
+      done(
+        lang === "bm"
+          ? "Kata laluan pengguna berjaya ditetapkan semula."
+          : "User password reset.",
+      );
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function deleteUser() {
+    if (
+      !confirm(
+        lang === "bm"
+          ? `Padam akaun ${data.profile?.full_name}? Tindakan ini tidak boleh dibatalkan.`
+          : `Delete ${data.profile?.full_name}'s account? This cannot be undone.`,
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await invoke("delete");
+      done(lang === "bm" ? "Pengguna berjaya dipadam." : "User deleted.");
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="modal-backdrop">
+      <div className="modal user-modal">
+        <div className="modal-head">
+          <div>
+            <span>ADMIN · USER DETAILS</span>
+            <h2>{data.profile?.full_name || "User"}</h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <div className="detail-list">
+          <p>
+            <strong>{t.email}:</strong> {data.email || "-"}
+          </p>
+          <p>
+            <strong>Role:</strong> {data.profile?.role || "-"}
+          </p>
+          <p>
+            <strong>{t.status}:</strong> {data.profile?.status || "-"}
+          </p>
+          <p>
+            <strong>{lang === "bm" ? "Akaun Dicipta" : "Created"}:</strong>{" "}
+            {data.created_at
+              ? new Date(data.created_at).toLocaleString(
+                  lang === "bm" ? "ms-MY" : "en-GB",
+                )
+              : "-"}
+          </p>
+          <p>
+            <strong>{lang === "bm" ? "Login Terakhir" : "Last Login"}:</strong>{" "}
+            {data.last_sign_in_at
+              ? new Date(data.last_sign_in_at).toLocaleString(
+                  lang === "bm" ? "ms-MY" : "en-GB",
+                )
+              : "-"}
+          </p>
+          <p className="security-note">
+            {lang === "bm"
+              ? "Kata laluan semasa tidak boleh dipaparkan demi keselamatan. Admin boleh menetapkan kata laluan baharu di bawah."
+              : "The current password cannot be displayed for security. Admin may set a new password below."}
+          </p>
+        </div>
+        <form onSubmit={resetPassword}>
+          <label>
+            {lang === "bm" ? "Kata Laluan Baharu" : "New Password"}
+            <input
+              type="password"
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </label>
+          <button className="secondary" disabled={busy}>
+            {lang === "bm" ? "Tetapkan Semula Kata Laluan" : "Reset Password"}
+          </button>
+        </form>
+        <div className="modal-actions user-danger-zone">
+          <button className="secondary" onClick={close}>
+            {t.cancel}
+          </button>
+          {data.id !== currentUser.id && (
+            <button className="delete-btn" disabled={busy} onClick={deleteUser}>
+              {lang === "bm" ? "Delete User / Padam Pengguna" : "Delete User"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2626,6 +3005,7 @@ function JobModal({ t, lang, equipment, user, close, done }: any) {
     job_type: "service",
     service_date: new Date().toISOString().slice(0, 10),
     work_time: new Date().toTimeString().slice(0, 5),
+    work_end_time: "",
     fault: "",
     work_done: "",
     remarks: "",
@@ -2672,6 +3052,7 @@ function JobModal({ t, lang, equipment, user, close, done }: any) {
         job_type: form.job_type,
         service_date: form.service_date,
         work_time: form.work_time || null,
+        work_end_time: form.work_end_time || null,
         fault: form.fault || null,
         work_done: form.work_done,
         remarks: form.remarks || null,
@@ -2738,8 +3119,18 @@ function JobModal({ t, lang, equipment, user, close, done }: any) {
               {t.runningHours}
               <input
                 type="time"
+                required
                 value={form.work_time}
                 onChange={(e) => change("work_time", e.target.value)}
+              />
+            </label>
+            <label>
+              {t.workEndTime}
+              <input
+                type="time"
+                required
+                value={form.work_end_time}
+                onChange={(e) => change("work_end_time", e.target.value)}
               />
             </label>
           </div>
@@ -2850,6 +3241,7 @@ function JobModalAll({
     job_type: "routine_service",
     service_date: new Date().toISOString().slice(0, 10),
     work_time: new Date().toTimeString().slice(0, 5),
+    work_end_time: "",
     fault: "",
     work_done: "",
     remarks: "",
@@ -2916,6 +3308,7 @@ function JobModalAll({
         job_type: form.job_type,
         service_date: form.service_date,
         work_time: form.work_time || null,
+        work_end_time: form.work_end_time || null,
         fault: form.fault || null,
         work_done: form.work_done,
         remarks: form.remarks || null,
@@ -3006,8 +3399,18 @@ function JobModalAll({
               {t.runningHours}
               <input
                 type="time"
+                required
                 value={form.work_time}
                 onChange={(e) => change("work_time", e.target.value)}
+              />
+            </label>
+            <label>
+              {t.workEndTime}
+              <input
+                type="time"
+                required
+                value={form.work_end_time}
+                onChange={(e) => change("work_end_time", e.target.value)}
               />
             </label>
           </div>
