@@ -681,6 +681,37 @@ code {
   align-items: center;
   gap: 7px;
 }
+.return-modal {
+  width: min(1050px, 100%);
+}
+.return-lines {
+  display: grid;
+  gap: 10px;
+}
+.return-line {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.4fr) 105px 155px minmax(
+      150px,
+      1fr
+    ) 105px;
+  gap: 9px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #f8fbfc;
+}
+.return-item-name {
+  align-self: center;
+}
+.return-item-name strong,
+.return-item-name small {
+  display: block;
+}
+.return-item-name small {
+  color: var(--muted);
+  margin-top: 5px;
+}
 .profile-card label,
 .modal label,
 .auth-card label {
@@ -1080,6 +1111,12 @@ code {
   }
   .rental-detail-summary {
     grid-template-columns: 1fr;
+  }
+  .return-line {
+    grid-template-columns: 1fr 1fr;
+  }
+  .return-item-name {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 520px) {
