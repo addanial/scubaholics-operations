@@ -131,6 +131,12 @@ button {
   height: 72px;
   font-size: 28px;
 }
+.avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
 .icon-btn,
 .menu-btn {
   border: 0;
@@ -498,6 +504,52 @@ code {
 }
 .profile-card form .primary {
   justify-self: start;
+}
+.avatar-upload {
+  display: inline-grid;
+  gap: 7px;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.avatar-upload input {
+  max-width: 100%;
+}
+.toolbar-buttons,
+.record-actions,
+.record-actions .text-btn,
+.rental-lines > .text-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.record-actions {
+  white-space: nowrap;
+}
+.rental-lines {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: #f8fbfc;
+  border-radius: 12px;
+  padding: 14px;
+}
+.rental-line {
+  display: grid;
+  grid-template-columns: minmax(230px, 2fr) 90px minmax(150px, 1fr) 30px;
+  gap: 8px;
+}
+.rental-line select,
+.rental-line input {
+  min-width: 0;
+}
+.danger-text {
+  color: var(--red);
+  font-size: 20px;
+}
+.rental-modal {
+  width: min(860px, 100%);
 }
 .profile-card label,
 .modal label,
@@ -885,6 +937,13 @@ code {
   }
   .editable-row {
     grid-template-columns: 1fr;
+  }
+  .rental-toolbar,
+  .toolbar-buttons {
+    flex-wrap: wrap;
+  }
+  .rental-line {
+    grid-template-columns: 1fr 80px;
   }
 }
 @media (max-width: 520px) {
