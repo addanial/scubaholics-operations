@@ -461,6 +461,15 @@ code {
   color: var(--muted);
   font-size: 12px;
 }
+.job-actions,
+.pdf-record-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pdf-record-btn {
+  cursor: pointer;
+}
 .job-card h3 {
   margin: 14px 0 7px;
 }
