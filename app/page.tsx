@@ -539,7 +539,9 @@ export default function App() {
         supabase.from("maintenance_schedules").select("*").eq("active", true),
         supabase
           .from("rentals")
-          .select("*,profiles(full_name),rental_items(*,inventory_items(*))")
+          .select(
+            "*,profiles:profiles!rentals_created_by_fkey(full_name),rental_items(*,inventory_items(*))",
+          )
           .is("deleted_at", null)
           .order("rental_date", { ascending: false }),
       ]);
@@ -560,7 +562,9 @@ export default function App() {
             .order("deleted_at", { ascending: false }),
           supabase
             .from("rentals")
-            .select("*,profiles(full_name),rental_items(*,inventory_items(*))")
+            .select(
+              "*,profiles:profiles!rentals_created_by_fkey(full_name),rental_items(*,inventory_items(*))",
+            )
             .not("deleted_at", "is", null)
             .order("deleted_at", { ascending: false }),
           supabase
