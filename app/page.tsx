@@ -588,10 +588,10 @@ export default function App() {
       if (data.session) load(data.session.user.id);
       else setLoading(false);
     });
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      if (s) load(s.user.id);
-      else {
+      if (event === "SIGNED_IN" && s) load(s.user.id);
+      if (event === "SIGNED_OUT" || !s) {
         setProfile(null);
         setLoading(false);
       }
@@ -4256,7 +4256,7 @@ function JobModalAll({
     inventory.find((i: any) => i.category.toLowerCase() === firstCategory)
       ?.id ||
     "";
-  const [form, setForm] = useState({
+  const defaultForm = {
     equipment_category: firstCategory,
     variation_id: firstVariation,
     job_type: "routine_service",
@@ -4266,7 +4266,19 @@ function JobModalAll({
     fault: "",
     work_done: "",
     remarks: "",
+  };
+  const [form, setForm] = useState(() => {
+    if (typeof window === "undefined") return defaultForm;
+    try {
+      const saved = sessionStorage.getItem("scubaholics-job-draft");
+      return saved ? { ...defaultForm, ...JSON.parse(saved) } : defaultForm;
+    } catch {
+      return defaultForm;
+    }
   });
+  useEffect(() => {
+    sessionStorage.setItem("scubaholics-job-draft", JSON.stringify(form));
+  }, [form]);
   const change = (k: string, v: string) => setForm({ ...form, [k]: v });
   const serviceCategory = ["compressor", "genset"].includes(
     form.equipment_category,
@@ -4342,6 +4354,7 @@ function JobModalAll({
         created_by: user.id,
       });
       if (error) throw error;
+      sessionStorage.removeItem("scubaholics-job-draft");
       done();
     } catch (err: any) {
       alert(err.message);
