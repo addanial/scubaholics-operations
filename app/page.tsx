@@ -608,7 +608,16 @@ export default function App() {
             setNotice={setNotice}
           />
         )}
-        {tab === "jobs" && <JobsView t={t} lang={lang} jobs={jobs} />}
+        {tab === "jobs" && (
+          <JobsView
+            t={t}
+            lang={lang}
+            jobs={jobs}
+            profile={profile}
+            refresh={refresh}
+            setNotice={setNotice}
+          />
+        )}
         {tab === "rentals" && (
           <RentalsView
             t={t}
@@ -1899,13 +1908,33 @@ async function printWorkRecords(records: Job[], lang: Lang) {
   doc.save(`SCUBAHOLICS-Rekod-Kerja-${suffix}.pdf`);
 }
 
-function JobsView({ t, lang, jobs }: any) {
+function JobsView({ t, lang, jobs, profile, refresh, setNotice }: any) {
   const [q, setQ] = useState("");
+  const [detail, setDetail] = useState<Job | null>(null);
   const rows = jobs.filter((j: any) =>
     (j.job_no + " " + j.work_done + " " + (j.fault || ""))
       .toLowerCase()
       .includes(q.toLowerCase()),
   );
+  async function deleteJob(job: Job) {
+    if (
+      !confirm(
+        lang === "bm"
+          ? `Padam ${job.job_no}? Tindakan ini tidak boleh dibatalkan.`
+          : `Delete ${job.job_no}? This action cannot be undone.`,
+      )
+    )
+      return;
+    const { error } = await supabase
+      .from("service_jobs")
+      .delete()
+      .eq("id", job.id);
+    if (error) return alert(error.message);
+    setNotice(
+      lang === "bm" ? "Rekod kerja berjaya dipadam." : "Job record deleted.",
+    );
+    refresh();
+  }
   return (
     <section>
       <div className="toolbar">
@@ -1961,13 +1990,117 @@ function JobsView({ t, lang, jobs }: any) {
             )}
             <footer>
               <span>{j.profiles?.full_name || "Staff"}</span>
-              <span>{fmtDate(j.service_date, lang)}</span>
+              <div className="job-footer-actions">
+                <span>{fmtDate(j.service_date, lang)}</span>
+                <button className="text-btn" onClick={() => setDetail(j)}>
+                  {lang === "bm" ? "Butiran" : "Details"}
+                </button>
+                {profile.role === "admin" && (
+                  <button
+                    className="text-btn danger-text-small"
+                    onClick={() => deleteJob(j)}
+                  >
+                    {lang === "bm" ? "Padam" : "Delete"}
+                  </button>
+                )}
+              </div>
             </footer>
           </article>
         ))}
         {!rows.length && <div className="empty panel">{t.noData}</div>}
       </div>
+      {detail && (
+        <JobDetailsModal
+          t={t}
+          lang={lang}
+          job={detail}
+          profile={profile}
+          close={() => setDetail(null)}
+          remove={() => {
+            setDetail(null);
+            deleteJob(detail);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function displayWorkTime(value: string | null, lang: Lang) {
+  if (!value) return "-";
+  return new Date(`2000-01-01T${value}`).toLocaleTimeString(
+    lang === "bm" ? "ms-MY" : "en-US",
+    { hour: "numeric", minute: "2-digit", hour12: true },
+  );
+}
+
+function JobDetailsModal({ t, lang, job, profile, close, remove }: any) {
+  return (
+    <div className="modal-backdrop">
+      <div className="modal user-modal">
+        <div className="modal-head">
+          <div>
+            <span>SCUBAHOLICS · {job.job_no}</span>
+            <h2>
+              {lang === "bm" ? "Butiran Rekod Kerja" : "Job Record Details"}
+            </h2>
+          </div>
+          <button className="icon-btn" onClick={close}>
+            <X />
+          </button>
+        </div>
+        <div className="detail-list job-detail-list">
+          <p>
+            <strong>{t.equipment}:</strong> {jobEquipmentName(job, lang)}
+          </p>
+          <p>
+            <strong>{t.jobType}:</strong> {job.job_type}
+          </p>
+          <p>
+            <strong>{t.date}:</strong> {fmtDate(job.service_date, lang)}
+          </p>
+          <p>
+            <strong>{t.runningHours}:</strong>{" "}
+            {displayWorkTime(job.work_time, lang)}
+          </p>
+          <p>
+            <strong>{t.workEndTime}:</strong>{" "}
+            {displayWorkTime(job.work_end_time, lang)}
+          </p>
+          <p>
+            <strong>{t.staff}:</strong> {job.profiles?.full_name || "Staff"}
+          </p>
+          <p>
+            <strong>{t.fault}:</strong> {job.fault || "-"}
+          </p>
+          <p>
+            <strong>{t.workDone}:</strong> {job.work_done || "-"}
+          </p>
+          <p>
+            <strong>{t.remarks}:</strong> {job.remarks || "-"}
+          </p>
+          <p>
+            <strong>{t.verification}:</strong> {job.verification_method || "-"}
+          </p>
+        </div>
+        <div className="modal-actions job-detail-actions">
+          {profile.role === "admin" && (
+            <button className="delete-btn" onClick={remove}>
+              {lang === "bm" ? "Padam Rekod" : "Delete Record"}
+            </button>
+          )}
+          <button
+            className="secondary"
+            onClick={() => printWorkRecords([job], lang)}
+          >
+            <FileDown size={16} /> PDF
+          </button>
+          <button className="primary" onClick={close}>
+            {lang === "bm" ? "Tutup" : "Close"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
