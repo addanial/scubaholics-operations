@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
+  Archive,
   Box,
   CalendarRange,
   ClipboardList,
@@ -30,6 +31,7 @@ type Tab =
   | "equipment"
   | "inventory"
   | "rentals"
+  | "archive"
   | "users"
   | "profile";
 type Profile = {
@@ -128,6 +130,16 @@ type Rental = {
   created_at: string;
   profiles?: { full_name: string } | null;
   rental_items?: RentalItem[];
+};
+type AuditLog = {
+  id: number;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  actor_id: string | null;
+  before_data: any;
+  after_data: any;
+  created_at: string;
 };
 
 const copy = {
@@ -368,6 +380,9 @@ export default function App() {
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [rentals, setRentals] = useState<Rental[]>([]);
+  const [archivedJobs, setArchivedJobs] = useState<Job[]>([]);
+  const [archivedRentals, setArchivedRentals] = useState<Rental[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [showJob, setShowJob] = useState(false);
@@ -398,11 +413,13 @@ export default function App() {
             "*,equipment(name_bm,name_en),inventory_items(name_bm,name_en,variant),profiles(full_name)",
           )
           .order("service_date", { ascending: false })
+          .is("deleted_at", null)
           .limit(100),
         supabase.from("maintenance_schedules").select("*").eq("active", true),
         supabase
           .from("rentals")
           .select("*,profiles(full_name),rental_items(*,inventory_items(*))")
+          .is("deleted_at", null)
           .order("rental_date", { ascending: false }),
       ]);
       setEquipment((e.data || []) as Equipment[]);
@@ -411,11 +428,30 @@ export default function App() {
       setSchedules((m.data || []) as Schedule[]);
       setRentals((r.data || []) as Rental[]);
       if (p.data.role === "admin") {
-        const u = await supabase
-          .from("profiles")
-          .select("*")
-          .order("created_at");
+        const [u, aj, ar, al] = await Promise.all([
+          supabase.from("profiles").select("*").order("created_at"),
+          supabase
+            .from("service_jobs")
+            .select(
+              "*,equipment(name_bm,name_en),inventory_items(name_bm,name_en,variant),profiles(full_name)",
+            )
+            .not("deleted_at", "is", null)
+            .order("deleted_at", { ascending: false }),
+          supabase
+            .from("rentals")
+            .select("*,profiles(full_name),rental_items(*,inventory_items(*))")
+            .not("deleted_at", "is", null)
+            .order("deleted_at", { ascending: false }),
+          supabase
+            .from("audit_logs")
+            .select("*")
+            .order("created_at", { ascending: false })
+            .limit(100),
+        ]);
         setProfiles((u.data || []) as Profile[]);
+        setArchivedJobs((aj.data || []) as Job[]);
+        setArchivedRentals((ar.data || []) as Rental[]);
+        setAuditLogs((al.data || []) as AuditLog[]);
       }
     }
     setLoading(false);
@@ -491,6 +527,11 @@ export default function App() {
             React.ReactNode,
             string,
           ],
+          [
+            "archive" as Tab,
+            <Archive key="a" />,
+            lang === "bm" ? "Audit & Arkib" : "Audit & Archive",
+          ] as [Tab, React.ReactNode, string],
         ]
       : []),
     ["profile", <Settings key="p" />, t.profile],
@@ -636,6 +677,18 @@ export default function App() {
             lang={lang}
             users={profiles}
             currentUser={profile}
+            refresh={refresh}
+            setNotice={setNotice}
+          />
+        )}
+        {tab === "archive" && profile.role === "admin" && (
+          <ArchiveView
+            t={t}
+            lang={lang}
+            jobs={archivedJobs}
+            rentals={archivedRentals}
+            logs={auditLogs}
+            users={profiles}
             refresh={refresh}
             setNotice={setNotice}
           />
@@ -836,18 +889,19 @@ function Dashboard({
     if (
       !confirm(
         lang === "bm"
-          ? `Padam ${job.job_no}? Rekod ini juga akan hilang daripada Rekod Kerja.`
-          : `Delete ${job.job_no}? It will also be removed from Job Records.`,
+          ? `Pindahkan ${job.job_no} ke Arkib? Rekod boleh dipulihkan semula.`
+          : `Move ${job.job_no} to Archive? It can be restored later.`,
       )
     )
       return;
-    const { error } = await supabase
-      .from("service_jobs")
-      .delete()
-      .eq("id", job.id);
+    const { error } = await supabase.rpc("archive_service_job", {
+      p_id: job.id,
+    });
     if (error) return alert(error.message);
     setNotice(
-      lang === "bm" ? "Aktiviti berjaya dipadam." : "Activity deleted.",
+      lang === "bm"
+        ? "Aktiviti dipindahkan ke Arkib."
+        : "Activity moved to Archive.",
     );
     refresh();
   }
@@ -1920,18 +1974,19 @@ function JobsView({ t, lang, jobs, profile, refresh, setNotice }: any) {
     if (
       !confirm(
         lang === "bm"
-          ? `Padam ${job.job_no}? Tindakan ini tidak boleh dibatalkan.`
-          : `Delete ${job.job_no}? This action cannot be undone.`,
+          ? `Pindahkan ${job.job_no} ke Arkib? Rekod boleh dipulihkan semula.`
+          : `Move ${job.job_no} to Archive? It can be restored later.`,
       )
     )
       return;
-    const { error } = await supabase
-      .from("service_jobs")
-      .delete()
-      .eq("id", job.id);
+    const { error } = await supabase.rpc("archive_service_job", {
+      p_id: job.id,
+    });
     if (error) return alert(error.message);
     setNotice(
-      lang === "bm" ? "Rekod kerja berjaya dipadam." : "Job record deleted.",
+      lang === "bm"
+        ? "Rekod kerja dipindahkan ke Arkib."
+        : "Job record moved to Archive.",
     );
     refresh();
   }
@@ -2249,6 +2304,26 @@ function RentalsView({
     );
     refresh();
   }
+  async function archiveRental(rental: Rental) {
+    if (
+      !confirm(
+        lang === "bm"
+          ? `Pindahkan ${rental.rental_no} ke Arkib?`
+          : `Move ${rental.rental_no} to Archive?`,
+      )
+    )
+      return;
+    const { error } = await supabase.rpc("archive_rental", {
+      p_id: rental.id,
+    });
+    if (error) return alert(error.message);
+    setNotice(
+      lang === "bm"
+        ? "Rekod penyewaan dipindahkan ke Arkib."
+        : "Rental moved to Archive.",
+    );
+    refresh();
+  }
   return (
     <section>
       <div className="toolbar rental-toolbar">
@@ -2338,6 +2413,14 @@ function RentalsView({
                         onClick={() => markReturned(r)}
                       >
                         {lang === "bm" ? "Pulang" : "Return"}
+                      </button>
+                    )}
+                    {profile.role === "admin" && (
+                      <button
+                        className="text-btn danger-text-small"
+                        onClick={() => archiveRental(r)}
+                      >
+                        {lang === "bm" ? "Arkib" : "Archive"}
                       </button>
                     )}
                   </div>
@@ -2588,6 +2671,215 @@ function RentalModal({ t, lang, inventory, close, done }: any) {
         </form>
       </div>
     </div>
+  );
+}
+
+function ArchiveView({
+  t,
+  lang,
+  jobs,
+  rentals,
+  logs,
+  users,
+  refresh,
+  setNotice,
+}: any) {
+  const [section, setSection] = useState<"archive" | "audit">("archive");
+  async function restore(kind: "job" | "rental", id: string) {
+    const { error } = await supabase.rpc(
+      kind === "job" ? "restore_service_job" : "restore_rental",
+      { p_id: id },
+    );
+    if (error) return alert(error.message);
+    setNotice(lang === "bm" ? "Rekod berjaya dipulihkan." : "Record restored.");
+    refresh();
+  }
+  async function removeForever(
+    kind: "job" | "rental",
+    id: string,
+    label: string,
+  ) {
+    if (
+      !confirm(
+        lang === "bm"
+          ? `Padam ${label} secara kekal? Tindakan ini tidak boleh dibatalkan.`
+          : `Permanently delete ${label}? This cannot be undone.`,
+      )
+    )
+      return;
+    const { error } = await supabase.rpc(
+      kind === "job"
+        ? "permanently_delete_service_job"
+        : "permanently_delete_rental",
+      { p_id: id },
+    );
+    if (error) return alert(error.message);
+    setNotice(
+      lang === "bm"
+        ? "Rekod dipadam secara kekal."
+        : "Record permanently deleted.",
+    );
+    refresh();
+  }
+  const entityLabel = (log: AuditLog) => {
+    const data = log.after_data || log.before_data || {};
+    return (
+      data.job_no ||
+      data.rental_no ||
+      data.sku ||
+      data.code ||
+      data.full_name ||
+      log.entity_id.slice(0, 8)
+    );
+  };
+  return (
+    <section>
+      <div className="toolbar">
+        <div>
+          <strong>{lang === "bm" ? "AUDIT & ARKIB" : "AUDIT & ARCHIVE"}</strong>
+          <small className="block-muted">
+            {lang === "bm"
+              ? "Pulihkan rekod atau semak sejarah perubahan sistem."
+              : "Restore records or review system change history."}
+          </small>
+        </div>
+        <div className="segmented archive-tabs">
+          <button
+            className={section === "archive" ? "active" : ""}
+            onClick={() => setSection("archive")}
+          >
+            {lang === "bm" ? "Arkib" : "Archive"}
+          </button>
+          <button
+            className={section === "audit" ? "active" : ""}
+            onClick={() => setSection("audit")}
+          >
+            Audit Log
+          </button>
+        </div>
+      </div>
+      {section === "archive" ? (
+        <div className="archive-sections">
+          <div className="panel">
+            <div className="panel-title">
+              <h3>
+                {lang === "bm"
+                  ? "Rekod Kerja Diarkibkan"
+                  : "Archived Job Records"}
+              </h3>
+            </div>
+            <div className="list">
+              {jobs.map((job: Job) => (
+                <div className="list-row" key={job.id}>
+                  <div>
+                    <strong>
+                      {job.job_no} · {jobEquipmentName(job, lang)}
+                    </strong>
+                    <small>
+                      {fmtDate(job.service_date, lang)} ·{" "}
+                      {job.profiles?.full_name || "Staff"}
+                    </small>
+                  </div>
+                  <div className="archive-actions">
+                    <button
+                      className="text-btn"
+                      onClick={() => restore("job", job.id)}
+                    >
+                      {lang === "bm" ? "Pulihkan" : "Restore"}
+                    </button>
+                    <button
+                      className="text-btn danger-text-small"
+                      onClick={() => removeForever("job", job.id, job.job_no)}
+                    >
+                      {lang === "bm" ? "Padam Kekal" : "Delete Forever"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!jobs.length && <div className="empty">{t.noData}</div>}
+            </div>
+          </div>
+          <div className="panel">
+            <div className="panel-title">
+              <h3>
+                {lang === "bm" ? "Penyewaan Diarkibkan" : "Archived Rentals"}
+              </h3>
+            </div>
+            <div className="list">
+              {rentals.map((r: Rental) => (
+                <div className="list-row" key={r.id}>
+                  <div>
+                    <strong>
+                      {r.rental_no} · {r.customer_name}
+                    </strong>
+                    <small>
+                      {fmtDate(r.rental_date, lang)} · {r.status}
+                    </small>
+                  </div>
+                  <div className="archive-actions">
+                    <button
+                      className="text-btn"
+                      onClick={() => restore("rental", r.id)}
+                    >
+                      {lang === "bm" ? "Pulihkan" : "Restore"}
+                    </button>
+                    <button
+                      className="text-btn danger-text-small"
+                      onClick={() => removeForever("rental", r.id, r.rental_no)}
+                    >
+                      {lang === "bm" ? "Padam Kekal" : "Delete Forever"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!rentals.length && <div className="empty">{t.noData}</div>}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>{lang === "bm" ? "Tarikh/Masa" : "Date/Time"}</th>
+                <th>{lang === "bm" ? "Pengguna" : "User"}</th>
+                <th>{lang === "bm" ? "Bahagian" : "Area"}</th>
+                <th>{lang === "bm" ? "Tindakan" : "Action"}</th>
+                <th>Rekod</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log: AuditLog) => (
+                <tr key={log.id}>
+                  <td>
+                    {new Date(log.created_at).toLocaleString(
+                      lang === "bm" ? "ms-MY" : "en-GB",
+                    )}
+                  </td>
+                  <td>
+                    {users.find((u: Profile) => u.id === log.actor_id)
+                      ?.full_name ||
+                      (log.actor_id
+                        ? `User ${log.actor_id.slice(0, 8)}`
+                        : "System")}
+                  </td>
+                  <td>{log.entity_type}</td>
+                  <td>
+                    <span
+                      className={`badge ${log.action === "DELETE" ? "danger" : log.action === "INSERT" ? "ok" : "warn"}`}
+                    >
+                      {log.action}
+                    </span>
+                  </td>
+                  <td>{entityLabel(log)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!logs.length && <div className="empty">{t.noData}</div>}
+        </div>
+      )}
+    </section>
   );
 }
 
