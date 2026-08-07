@@ -5,6 +5,7 @@ import {
   Activity,
   Box,
   ClipboardList,
+  FileDown,
   Gauge,
   Languages,
   LogOut,
@@ -1477,6 +1478,111 @@ function InventoryView({
   );
 }
 
+function jobEquipmentName(job: Job, lang: Lang) {
+  if (job.equipment) {
+    return lang === "bm" ? job.equipment.name_bm : job.equipment.name_en;
+  }
+  if (job.inventory_items) {
+    const name =
+      lang === "bm"
+        ? job.inventory_items.name_bm
+        : job.inventory_items.name_en;
+    return `${name}${job.inventory_items.variant ? ` - ${job.inventory_items.variant}` : ""}`;
+  }
+  return job.equipment_category || job.job_type || "-";
+}
+
+async function printWorkRecords(records: Job[], lang: Lang) {
+  if (!records.length) return;
+
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 16;
+  const contentWidth = pageWidth - margin * 2;
+  let y = 17;
+
+  const addHeader = () => {
+    doc.setTextColor(10, 64, 92);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("SCUBAHOLICS SDN BHD", margin, y);
+    y += 7;
+    doc.setFontSize(12);
+    doc.text("REKOD KERJA / JOB RECORDS", margin, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(90, 105, 115);
+    doc.text(
+      `${lang === "bm" ? "Dijana" : "Generated"}: ${new Date().toLocaleString(lang === "bm" ? "ms-MY" : "en-GB")}`,
+      margin,
+      y,
+    );
+    y += 7;
+    doc.setDrawColor(190, 205, 214);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 7;
+  };
+
+  const ensureSpace = (needed: number) => {
+    if (y + needed <= pageHeight - 15) return;
+    doc.addPage();
+    y = 17;
+    addHeader();
+  };
+
+  const field = (label: string, value: string | null | undefined) => {
+    const text = `${label}: ${value || "-"}`;
+    const lines = doc.splitTextToSize(text, contentWidth - 4);
+    ensureSpace(lines.length * 4.5 + 1);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(35, 50, 60);
+    doc.text(lines, margin + 2, y);
+    y += lines.length * 4.5 + 1;
+  };
+
+  addHeader();
+  records.forEach((job, index) => {
+    ensureSpace(55);
+    doc.setFillColor(237, 245, 248);
+    doc.roundedRect(margin, y - 4, contentWidth, 8, 1.5, 1.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(10, 64, 92);
+    doc.text(`${index + 1}. ${job.job_no}`, margin + 2, y + 1);
+    y += 8;
+    field(lang === "bm" ? "Peralatan" : "Equipment", jobEquipmentName(job, lang));
+    field(lang === "bm" ? "Tarikh servis" : "Service date", fmtDate(job.service_date, lang));
+    field(lang === "bm" ? "Jenis kerja" : "Job type", job.job_type);
+    field(lang === "bm" ? "Staf" : "Staff", job.profiles?.full_name || "Staff");
+    field(lang === "bm" ? "Kaedah pengesahan" : "Verification", job.verification_method);
+    field(lang === "bm" ? "Kerosakan" : "Fault", job.fault);
+    field(lang === "bm" ? "Kerja dilakukan" : "Work done", job.work_done);
+    field(lang === "bm" ? "Catatan" : "Remarks", job.remarks);
+    y += 5;
+  });
+
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(110, 120, 128);
+    doc.text(`${page} / ${pages}`, pageWidth - margin, pageHeight - 8, {
+      align: "right",
+    });
+  }
+
+  const suffix =
+    records.length === 1
+      ? records[0].job_no.replace(/[^a-zA-Z0-9_-]/g, "-")
+      : new Date().toISOString().slice(0, 10);
+  doc.save(`SCUBAHOLICS-Rekod-Kerja-${suffix}.pdf`);
+}
+
 function JobsView({ t, lang, jobs }: any) {
   const [q, setQ] = useState("");
   const rows = jobs.filter((j: any) =>
@@ -1495,13 +1601,30 @@ function JobsView({ t, lang, jobs }: any) {
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
+        <button
+          className="primary"
+          onClick={() => printWorkRecords(rows, lang)}
+          disabled={!rows.length}
+        >
+          <FileDown size={17} />
+          {lang === "bm" ? "Cetak Rekod Kerja" : "Print Job Records"}
+        </button>
       </div>
       <div className="job-grid">
         {rows.map((j: any) => (
           <article className="job-card" key={j.id}>
             <div className="job-head">
               <span>{j.job_no}</span>
-              <span className="badge">{j.verification_method}</span>
+              <div className="job-actions">
+                <span className="badge">{j.verification_method}</span>
+                <button
+                  className="text-btn pdf-record-btn"
+                  onClick={() => printWorkRecords([j], lang)}
+                  title={lang === "bm" ? "Cetak rekod ini" : "Print this record"}
+                >
+                  <FileDown size={15} /> PDF
+                </button>
+              </div>
             </div>
             <h3>
               {j.equipment
