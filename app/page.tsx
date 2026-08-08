@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Archive,
+  Bell,
   Box,
   CalendarRange,
   ClipboardList,
@@ -855,6 +856,7 @@ export default function App() {
             profile={profile}
             refresh={refresh}
             setNotice={setNotice}
+            navigate={setTab}
           />
         )}
         {tab === "equipment" && (
@@ -1085,6 +1087,7 @@ function Dashboard({
   profile,
   refresh,
   setNotice,
+  navigate,
 }: any) {
   const [detail, setDetail] = useState<any>(null);
   const overdue = due.filter(
@@ -1102,9 +1105,22 @@ function Dashboard({
   const activeRentals = rentals.filter((r: Rental) =>
     ["out", "partial_return", "overdue"].includes(r.status),
   );
-  const overdueRentals = activeRentals.filter(
-    (r: Rental) => new Date(r.expected_return_date) < new Date(),
-  ).length;
+  const lateRentals = activeRentals
+    .filter((r: Rental) => new Date(r.expected_return_date) < new Date())
+    .sort(
+      (a: Rental, b: Rental) =>
+        new Date(a.expected_return_date).getTime() -
+        new Date(b.expected_return_date).getTime(),
+    );
+  const overdueRentals = lateRentals.length;
+  const serviceAlerts = [...due]
+    .filter((e: any) => Math.min(e.routineDays, e.overallDays) <= 7)
+    .sort(
+      (a: any, b: any) =>
+        Math.min(a.routineDays, a.overallDays) -
+        Math.min(b.routineDays, b.overallDays),
+    );
+  const alertCount = serviceAlerts.length + lateRentals.length;
   const cards = [
     [t.totalEquipment, equipmentTypes, <Wrench key="w" />],
     [t.inventoryQty, totalPhysicalUnits, <Box key="b" />],
@@ -1156,6 +1172,84 @@ function Dashboard({
             {c[2]}
           </div>
         ))}
+      </div>
+      <div className="panel alert-center">
+        <div className="panel-title alert-title">
+          <div>
+            <h3>
+              <Bell size={18} />
+              {lang === "bm" ? "Pusat Peringatan" : "Reminder Centre"}
+            </h3>
+            <small className="block-muted">
+              {alertCount
+                ? lang === "bm"
+                  ? `${alertCount} tindakan memerlukan perhatian`
+                  : `${alertCount} items require attention`
+                : lang === "bm"
+                  ? "Tiada tindakan segera diperlukan"
+                  : "No immediate action required"}
+            </small>
+          </div>
+          <span className={`alert-count ${alertCount ? "has-alerts" : ""}`}>
+            {alertCount}
+          </span>
+        </div>
+        {alertCount ? (
+          <div className="alert-grid">
+            {serviceAlerts.slice(0, 6).map((e: any) => {
+              const days = Math.min(e.routineDays, e.overallDays);
+              return (
+                <div className={`alert-item ${days < 0 ? "critical" : "upcoming"}`} key={`service-${e.id}`}>
+                  <div>
+                    <strong>
+                      {days < 0
+                        ? lang === "bm" ? "Servis tertunggak" : "Service overdue"
+                        : lang === "bm" ? "Servis hampir tiba" : "Service due soon"}
+                    </strong>
+                    <span>{lang === "bm" ? e.name_bm : e.name_en}</span>
+                    <small>
+                      {days < 0
+                        ? lang === "bm"
+                          ? `Lewat ${Math.abs(days)} hari`
+                          : `${Math.abs(days)} day(s) overdue`
+                        : days === 0
+                          ? lang === "bm" ? "Perlu diservis hari ini" : "Service due today"
+                          : lang === "bm" ? `Dalam ${days} hari` : `Due in ${days} day(s)`}
+                    </small>
+                  </div>
+                  <button className="text-btn" onClick={() => setDetail(e)}>
+                    {lang === "bm" ? "Butiran" : "Details"}
+                  </button>
+                </div>
+              );
+            })}
+            {lateRentals.slice(0, 6).map((r: Rental) => {
+              const lateDays = Math.max(1, Math.abs(dayDiff(new Date(r.expected_return_date))));
+              return (
+                <div className="alert-item critical" key={`rental-${r.id}`}>
+                  <div>
+                    <strong>{lang === "bm" ? "Penyewaan lewat" : "Rental overdue"}</strong>
+                    <span>{r.rental_no} · {r.customer_name}</span>
+                    <small>
+                      {lang === "bm"
+                        ? `Lewat ${lateDays} hari · sepatutnya ${fmtDate(r.expected_return_date, lang)}`
+                        : `${lateDays} day(s) late · due ${fmtDate(r.expected_return_date, lang)}`}
+                    </small>
+                  </div>
+                  <button className="text-btn" onClick={() => navigate("rentals")}>
+                    {lang === "bm" ? "Buka" : "Open"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="alert-empty">
+            {lang === "bm"
+              ? "Semua servis dan penyewaan berada dalam keadaan terkawal."
+              : "All services and rentals are currently under control."}
+          </div>
+        )}
       </div>
       <div className="two-col">
         <div className="panel">
