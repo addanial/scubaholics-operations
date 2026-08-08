@@ -620,6 +620,7 @@ export default function App() {
       setLang((p.data.language || "bm") as Lang);
     }
     if (p.data?.status === "active") {
+      await supabase.rpc("refresh_overdue_rentals");
       const [e, i, j, m, r] = await Promise.all([
         supabase.from("equipment").select("*").order("code"),
         supabase
@@ -1098,7 +1099,9 @@ function Dashboard({
     ...inventory.map((i: any) => i.category.toLowerCase()),
   ]).size;
   const totalPhysicalUnits = equipment.length + totalQty;
-  const activeRentals = rentals.filter((r: Rental) => r.status === "out");
+  const activeRentals = rentals.filter((r: Rental) =>
+    ["out", "partial_return", "overdue"].includes(r.status),
+  );
   const overdueRentals = activeRentals.filter(
     (r: Rental) => new Date(r.expected_return_date) < new Date(),
   ).length;
@@ -1305,13 +1308,19 @@ function EquipmentSummaryModal({
     machines.length +
     items.reduce((sum: number, item: Inventory) => sum + item.quantity, 0);
   const rented = rentals
-    .filter((r: Rental) => r.status === "out")
+    .filter((r: Rental) =>
+      ["out", "partial_return", "overdue"].includes(r.status),
+    )
     .flatMap((r: Rental) => r.rental_items || [])
     .filter(
       (line: RentalItem) =>
         line.inventory_items?.category.toLowerCase() === category,
     )
-    .reduce((sum: number, line: RentalItem) => sum + line.quantity, 0);
+    .reduce(
+      (sum: number, line: RentalItem) =>
+        sum + Math.max(0, line.quantity - (line.returned_quantity || 0)),
+      0,
+    );
   const conditions = [
     ...machines.map((e: Equipment) => e.item_condition),
     ...items.map((i: Inventory) => i.item_condition),
@@ -2799,7 +2808,8 @@ function RentalsView({
                     <button className="text-btn" onClick={() => setDetail(r)}>
                       {lang === "bm" ? "Butiran" : "Details"}
                     </button>
-                    {profile.role !== "auditor" && r.status === "out" && (
+                    {profile.role !== "auditor" &&
+                      ["out", "partial_return", "overdue"].includes(r.status) && (
                       <button
                         className="text-btn"
                         onClick={() => setReturning(r)}
@@ -2808,8 +2818,9 @@ function RentalsView({
                       </button>
                     )}
                     {profile.role !== "auditor" &&
-                      r.status !== "out" &&
-                      r.status !== "cancelled" && (
+                      !["out", "partial_return", "overdue", "cancelled"].includes(
+                        r.status,
+                      ) && (
                         <button
                           className="text-btn"
                           onClick={() => setReturning(r)}
@@ -2838,6 +2849,7 @@ function RentalsView({
           t={t}
           lang={lang}
           inventory={inventory}
+          rentals={rentals}
           user={user}
           close={() => setShowAdd(false)}
           done={() => {
@@ -3434,8 +3446,26 @@ function RentalReturnModal({ t, lang, rental, user, close, done }: any) {
   );
 }
 
-function RentalModal({ t, lang, inventory, user, close, done }: any) {
+function RentalModal({ t, lang, inventory, rentals, user, close, done }: any) {
   const rentable = inventory as Inventory[];
+  const rentedByItem = useMemo(() => {
+    const totals = new Map<string, number>();
+    (rentals as Rental[])
+      .filter((r) => ["out", "partial_return", "overdue"].includes(r.status))
+      .flatMap((r) => r.rental_items || [])
+      .forEach((line) =>
+        totals.set(
+          line.inventory_item_id,
+          (totals.get(line.inventory_item_id) || 0) +
+            Math.max(0, line.quantity - (line.returned_quantity || 0)),
+        ),
+      );
+    return totals;
+  }, [rentals]);
+  const availableFor = (item?: Inventory) =>
+    item
+      ? Math.max(0, item.quantity - (rentedByItem.get(item.id) || 0))
+      : 0;
   const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   const [busy, setBusy] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -3573,14 +3603,17 @@ function RentalModal({ t, lang, inventory, user, close, done }: any) {
                     {rentable.map((i) => (
                       <option key={i.id} value={i.id}>
                         {lang === "bm" ? i.name_bm : i.name_en}
-                        {i.variant ? ` · ${i.variant}` : ""} ({i.quantity})
+                        {i.variant ? ` · ${i.variant}` : ""} ·{" "}
+                        {lang === "bm" ? "Tersedia" : "Available"}:{" "}
+                        {availableFor(i)}
                       </option>
                     ))}
                   </select>
                   <input
                     type="number"
                     min="1"
-                    max={selected?.quantity || 1}
+                    max={availableFor(selected) || 1}
+                    disabled={!selected || availableFor(selected) < 1}
                     value={item.quantity}
                     onChange={(e) =>
                       setItem(index, "quantity", Number(e.target.value))
